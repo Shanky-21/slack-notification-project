@@ -10,7 +10,7 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
   console.log("Sending Slack message as root message...");
 
   try {
-    console.log("Step 1: Starting function");
+    logger.info("[EmailOrchestrator] Step 1: Input validation");
 
     /*
 
@@ -71,8 +71,12 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
     });
 
     // Use formatRootMessage to create the message text
-    console.log("[EmailOrchestrator] Step 2: Formatting message text");
+    logger.info("[EmailOrchestrator] Step 2: Formatting message text");
     const { finalMessageWithHeader } = formatRootMessage(email, sentiment);
+
+    logger.debug("[EmailOrchestrator] Formatted message", { 
+      messageLength: finalMessageWithHeader.length 
+    });
 
     const slackFormattedMessage = convertMarkdownToSlack(
       finalMessageWithHeader
@@ -116,13 +120,12 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
       },
     }));
 
-    const slackPayload = {
-      channel: "C08DE1LEVR8", // Replace with your channel ID
-      text: "Test message",
-      mrkdwn: true,
-      blocks: blocks,
-      metadata: metadata
-    };
+    const slackPayload = createSlackPayload(
+      blocks, 
+      metadata, 
+      email.slackReference?.threadTs
+    );
+
 
     logger.debug('Message metadata', metadata);
 
@@ -148,8 +151,35 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
   }
 }
 
+function createSlackPayload(blocks, metadata, threadTs) {
+  return {
+      channel: "C08DE1LEVR8",
+      text: "Test message",
+      mrkdwn: true,
+      blocks,
+      metadata,
+      ...(threadTs && { thread_ts: threadTs })
+  };
+}
+
 // Split the message into chunks of 3000 characters
 function splitMessageAtLineBreak(message, maxLength = 3000) {
+
+  if (!message) {
+    logger.warn("[EmailOrchestrator] Empty message received for chunking");
+    return [];
+  }
+
+  if (typeof message !== 'string') {
+    logger.error("[EmailOrchestrator] Invalid message type for chunking");
+    return [String(message)];
+  }
+
+  logger.debug("[EmailOrchestrator] Splitting message", { 
+    originalLength: message.length,
+    maxChunkSize: maxLength 
+  });
+
   if (message.length <= maxLength) {
     return [message];
   }
