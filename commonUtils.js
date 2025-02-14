@@ -44,3 +44,10 @@ function convertMarkdownToSlack(text) {
 
   return text;
 }
+
+
+// Export the functions
+module.exports = {
+  convertMarkdownLinksToSlackLinks,
+  convertMarkdownToSlack
+};

@@ -1,7 +1,10 @@
+const { WebClient } = require('@slack/web-api');
+const { formatRootMessage } = require('./formatSlackMessageUtils');
+const { convertMarkdownToSlack, convertMarkdownLinksToSlackLinks } = require('./commonUtils');
+const { logger } = require('./logger');  
 
-
-async function testSendAsRootMessage(team, email, sentiment, client = app.client) {
-  logger.info("Sending Slack message as root message...");
+async function testSendAsRootMessage(team, email, sentiment, client) {
+  console.log("Sending Slack message as root message...");
 
 
   try {
@@ -58,7 +61,7 @@ async function testSendAsRootMessage(team, email, sentiment, client = app.client
 
 
       const slackPayload = {
-          channel: 'C07TBNV0MU7', // Replace with your channel ID
+          channel: 'C08DE1LEVR8', // Replace with your channel ID
           text: "Test message",
           mrkdwn: true,
           blocks: blocks,
@@ -105,3 +108,7 @@ function splitMessageAtLineBreak(message, maxLength = 3000) {
 
   return messages;
 }
+
+module.exports = {
+  testSendAsRootMessage
+};

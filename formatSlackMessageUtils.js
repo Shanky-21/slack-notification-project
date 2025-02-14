@@ -1,9 +1,5 @@
-
-
 const dayjs = require("dayjs");
-const { logger } = require("../../../utils/logger");
-
-
+const { logger } = require("./logger");  // Updated path to logger
 
 
 // Regex patterns for reply headers
