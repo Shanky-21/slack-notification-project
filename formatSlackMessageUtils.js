@@ -161,183 +161,227 @@ const textFormatters = {
 
 // Message processing functions
 const messageProcessors = {
-   extractEmailContent(emailText) {
-       // Normalize line endings
-       emailText = emailText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    extractEmailContent(emailText) {
+        // Normalize line endings
+        emailText = emailText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+        // Remove specific CSS styles from the email text
+        const specificCssStylesRegex = /{[\s\S]*?margin: 0 !important;[\s\S]*?}@media[\s\S]*?{[\s\S]*?}/g;
+        emailText = emailText.replace(specificCssStylesRegex, '');
+
+        // Remove inline CSS styles
+        const inlineCssRegex = /<style[\s\S]*?>[\s\S]*?<\/style>/gi;
+        emailText = emailText.replace(inlineCssRegex, '');
+
+        // Split the email text into lines
+        const lines = emailText.split('\n');
+
+        // Initialize variables
+        const messages = [];
+        let currentMessage = {
+            content: '',
+            level: 0,
+        };
+
+        // Regular expressions to identify email headers, spam analysis, and separators
+        const headerRegex = /^[A-Z][\w-]*: .*$/;
+        const spamAnalysisRegex = /^Content-(Type|Transfer-Encoding|Disposition): .*$/i;
+        const separatorRegex = /^(-{2,}|_{2,}|\*{2,})$/;
+
+        // Iterate over each line
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+
+            // Skip empty lines
+            if (line === '') {
+                continue;
+            }
+
+            // Check if line is a header or spam analysis
+            if (headerRegex.test(line) || spamAnalysisRegex.test(line)) {
+                continue; // Skip headers
+            }
+
+            // Check for separator lines
+            if (separatorRegex.test(line)) {
+                continue; // Skip separators
+            }
+
+            // Append the line to the current message content
+            if (currentMessage.content) {
+                currentMessage.content += '\n' + line;
+            } else {
+                currentMessage.content = line;
+            }
+        }
+
+        // Add the message to the messages array
+        if (currentMessage.content) {
+            messages.push(currentMessage);
+        }
+
+        return messages;
+    },
 
 
-       // Remove specific CSS styles from the email text
-       const specificCssStylesRegex = /{[\s\S]*?margin: 0 !important;[\s\S]*?}@media[\s\S]*?{[\s\S]*?}/g;
-       emailText = emailText.replace(specificCssStylesRegex, '');
+//    processMessages(messages) {
+//        let stopAddingText = false;
+//        let originalText = [];
+//        let quotedText = [];
+//        let originalTextIsFound = false;
+//        let footerDetected = false;
+//        let replyHeaderCount = 0;
 
 
-       // Remove inline CSS styles
-       const inlineCssRegex = /<style[\s\S]*?>[\s\S]*?<\/style>/gi;
-       emailText = emailText.replace(inlineCssRegex, '');
+//        for (let msg of messages) {
+//            const lines = textFormatters.escapeMarkdown(msg.content.trim()).split('\n');
 
 
-       // Split the email text into lines
-       const lines = emailText.split('\n');
+//            for (let line of lines) {
 
 
-       // Initialize variables
-       const messages = [];
-       let currentMessage = {
-           content: '',
-           level: 0,
-       };
+//                // Stop processing if the second reply header has been encountered
+//                if (footerDetected || replyHeaderCount >= 2) {
+//                    break;
+//                }
 
 
-       // Regular expressions to identify email headers, spam analysis, and separators
-       const headerRegex = /^[A-Z][\w-]*: .*$/;
-       const spamAnalysisRegex = /^Content-(Type|Transfer-Encoding|Disposition): .*$/i;
-       const separatorRegex = /^(-{2,}|_{2,}|\*{2,})$/;
+//                // Check for footer patterns
+//                if (footerRegexPatterns.some(pattern => pattern.test(line.trim()))) {
+//                    footerDetected = true;
+//                    break;
+//                }
 
 
-       // Iterate over each line
-       for (let i = 0; i < lines.length; i++) {
-           let line = lines[i].trim();
+//                let chevronCount = (line.match(/^>+/) || [''])[0].length;
 
 
-           // Skip empty lines
-           if (line === '') {
-               continue;
-           }
+//                if (!stopAddingText) {
+//                    line = line.replace(/^>+(\s*>+)?/, '').trim();
+//                }
 
 
-           // Check if line is a header or spam analysis
-           if (headerRegex.test(line) || spamAnalysisRegex.test(line)) {
-               continue; // Skip headers
-           }
+//                // Check for any reply header (reply, forwarded, or sent headers)
+//                if (emailPatterns.isReplyHeader(line)) {
+//                    replyHeaderCount++;
+//                    if (replyHeaderCount === 2) {
+//                        stopAddingText = true;
+//                        break;
+//                    }
 
 
-           // Check for separator lines
-           if (separatorRegex.test(line)) {
-               continue; // Skip separators
-           }
+//                    const matchedText = [
+//                        emailPatterns.replyHeaders.standard,
+//                        emailPatterns.replyHeaders.complex
+//                    ].reduce((match, pattern) => match || line.match(pattern), null);
 
 
-           // Append the line to the current message content
-           if (currentMessage.content) {
-               currentMessage.content += '\n' + line;
-           } else {
-               currentMessage.content = line;
-           }
-       }
+//                    const splitLine = line.split(matchedText);
 
 
-       // Add the message to the messages array
-       if (currentMessage.content) {
-           messages.push(currentMessage);
-       }
+//                    originalText.push(splitLine[0] || '');
+//                    quotedText.push(`${matchedText[0]} \n>${splitLine[1]?.replace(/\\\\/g, '').trim() || ''}\n\n`);
 
 
-       return messages;
-   },
+//                    originalTextIsFound = true;
+//                    continue;
+//                }
 
 
-   processMessages(messages) {
-       let stopAddingText = false;
-       let originalText = [];
-       let quotedText = [];
-       let originalTextIsFound = false;
-       let footerDetected = false;
-       let replyHeaderCount = 0;
+//                // Detect Separator Dashes
+//                if (emailPatterns.headers.dash.test(line)) {
+//                    stopAddingText = true;
+//                    if (replyHeaderCount < 2) {
+//                        originalText.push(line.trim());
+//                    }
+//                    break;
+//                }
 
 
-       for (let msg of messages) {
-           const lines = textFormatters.escapeMarkdown(msg.content.trim()).split('\n');
+//                // Handle quoted text lines (`>`)
+//                if (line.startsWith('>')) {
+//                    quotedText.push(line.replace(/^>\s*/, ''));
+//                    break;
+//                }
 
 
-           for (let line of lines) {
+//                // Handle nested quoted text
+//                if (chevronCount > 0 && originalTextIsFound) {
+//                    quotedText.push(line.replace(/^>\s*/, ''));
+//                    break;
+//                }
 
 
-               // Stop processing if the second reply header has been encountered
-               if (footerDetected || replyHeaderCount >= 2) {
-                   break;
-               }
+//                // Add to originalText if replyHeaderCount < 2
+//                if (replyHeaderCount < 2) {
+//                    originalText.push(line);
+//                }
+//            }
 
 
-               // Check for footer patterns
-               if (footerRegexPatterns.some(pattern => pattern.test(line.trim()))) {
-                   footerDetected = true;
-                   break;
-               }
+//            // Stop processing messages if second reply header is encountered
+//            if (footerDetected || replyHeaderCount >= 2) {
+//                break;
+//            }
+//        }
+//        return { originalText, quotedText };
+//    },
 
+processMessages(messages) {
+    for (let msg of messages) {
+        const text = msg.content;
+        
+        // Split by the first 'wrote:' occurrence
+        const [latestPart, ...olderParts] = text.split(/wrote:/);
+        
+        // Get latest reply (everything before "On")
+        const latestReply = latestPart.split(/On /)[0].trim();
+        
+        
+        // Get first previous reply
+        let previousReply = null;
+        if (olderParts.length > 0) {
+            const firstReplyPart = olderParts[0];
+            
+            // Extract date and author information
+            const dateMatch = latestPart.match(/On (.+?) at (.+?) </);
+            const emailMatch = latestPart.match(/<(.+?)>/);
+            
+            previousReply = {
+                content: firstReplyPart.split('----')[0].trim()
+                    .replace(/^>+/gm, '') // Remove '>' from the start of lines
+                    .split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line)
+                    .join('\n'),
+                date: dateMatch ? `${dateMatch[1]} at ${dateMatch[2]}` : '',
+                author: emailMatch ? emailMatch[1] : ''
+            };
+        }
 
-               let chevronCount = (line.match(/^>+/) || [''])[0].length;
+        // Clean up the latest reply
+        const cleanedLatestReply = latestReply
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line)
+            .join('\n');
 
+        logger.debug('Processed message parts:', {
+            latestReply: cleanedLatestReply,
+            hasPreviousReply: !!previousReply
+        });
 
-               if (!stopAddingText) {
-                   line = line.replace(/^>+(\s*>+)?/, '').trim();
-               }
+        return {
+            originalText: cleanedLatestReply,
+            quotedText: previousReply ? [previousReply] : []
+        };
+    }
 
-
-               // Check for any reply header (reply, forwarded, or sent headers)
-               if (emailPatterns.isReplyHeader(line)) {
-                   replyHeaderCount++;
-                   if (replyHeaderCount === 2) {
-                       stopAddingText = true;
-                       break;
-                   }
-
-
-                   const matchedText = [
-                       emailPatterns.replyHeaders.standard,
-                       emailPatterns.replyHeaders.complex
-                   ].reduce((match, pattern) => match || line.match(pattern), null);
-
-
-                   const splitLine = line.split(matchedText);
-
-
-                   originalText.push(splitLine[0] || '');
-                   quotedText.push(`>:outbox_tray: Your reply:\n ${matchedText[0]} \n>${splitLine[1]?.replace(/\\\\/g, '').trim() || ''}\n\n`);
-
-
-                   originalTextIsFound = true;
-                   continue;
-               }
-
-
-               // Detect Separator Dashes
-               if (emailPatterns.headers.dash.test(line)) {
-                   stopAddingText = true;
-                   if (replyHeaderCount < 2) {
-                       originalText.push(line.trim());
-                   }
-                   break;
-               }
-
-
-               // Handle quoted text lines (`>`)
-               if (line.startsWith('>')) {
-                   quotedText.push(line.replace(/^>\s*/, ''));
-                   break;
-               }
-
-
-               // Handle nested quoted text
-               if (chevronCount > 0 && originalTextIsFound) {
-                   quotedText.push(line.replace(/^>\s*/, ''));
-                   break;
-               }
-
-
-               // Add to originalText if replyHeaderCount < 2
-               if (replyHeaderCount < 2) {
-                   originalText.push(line);
-               }
-           }
-
-
-           // Stop processing messages if second reply header is encountered
-           if (footerDetected || replyHeaderCount >= 2) {
-               break;
-           }
-       }
-       return { originalText, quotedText };
-   },
+    return {
+        originalText: '',
+        quotedText: []
+    };
+},
 
 
    combineOriginalAndQuotedText(originalText, quotedText) {
@@ -399,22 +443,40 @@ const messageFormatters = {
    },
 
 
-   formatRootMessage(email, sentiment) {
-       const headerMessage = messageFormatters.constructHeaderMessage(email, sentiment);
-       const messages = messageProcessors.extractEmailContent(email.text);
-       const { originalText, quotedText } = messageProcessors.processMessages(messages);
+    // In formatSlackMessageUtils.js
+    // formatRootMessage(email, sentiment) {
+    //     const messages = messageProcessors.extractEmailContent(email.text);
+    //     const { originalText, quotedText } = messageProcessors.processMessages(messages);
+    
+    //     // Just clean up the texts without adding formatting
+    //     const cleanOriginalText = originalText
+    //         .filter(line => line.trim() !== '')
+    //         .join('\n');
+    
+    //     // Return raw texts without formatting
+    //     return {
+    //         originalText: cleanOriginalText,
+    //         quotedText: quotedText
+    //     };
+    // },
+
+    formatRootMessage(email, sentiment) {
+        const messages = messageProcessors.extractEmailContent(email.text);
+        const { originalText, quotedText } = messageProcessors.processMessages(messages);
+
+        logger.debug('Formatting root message:', {
+            hasOriginalText: !!originalText,
+            quotedTextCount: quotedText.length
+        });
+
+        return {
+            originalText,
+            quotedText
+        };
+    }
+    
 
 
-       let message = messageProcessors.combineOriginalAndQuotedText(originalText, quotedText);
-       const finalMessage = messageProcessors.cleanAndFormatFinalMessage(message);
-       const finalMessageWithHeader = `${headerMessage}\n${textFormatters.cleanMarkdownSpecialCharacters(finalMessage)}`;
-       return {
-           finalMessageWithHeader,
-           originalText,
-           quotedText,
-           headerMessage
-       };
-   }
 };
 
 
