@@ -5,48 +5,29 @@ const {
   convertMarkdownLinksToSlackLinks,
 } = require("./commonUtils");
 const { logger } = require("./logger");
+const { SLACK } = require("./config");
+const { validateTeam, validateEmail } = require("./validators");
 
 async function testSendAsRootMessage(team, email, sentiment, client) {
-  console.log("Sending Slack message as root message...");
+  logger.info("[EmailOrchestrator] Starting Slack message processing...");
 
   try {
     logger.info("[EmailOrchestrator] Step 1: Input validation");
 
-    /*
-
-      Adding more input validations. 
-      */
     // 1. Team validation
-    if (!team || !team.teamID) {
-      logger.info(
-        `[EmailOrchestrator] Skipping Slack message: Invalid team data`,
-        {
-          team: team ? "exists" : "null",
-          teamID: team?.teamID,
-        }
-      );
-      return; // Skip instead of throw
-    } // 2. Client validation (This should throw as it's a technical error)
+    if (!validateTeam(team)) return;
 
+    // 2. Client validation
     if (!client || !client.chat) {
       logger.error("[EmailOrchestrator] Slack client validation failed", {
         client: client ? "exists" : "null",
         chat: client?.chat ? "exists" : "null",
       });
-      throw new Error("Invalid Slack client"); // Keep throwing
+      throw new Error("Invalid Slack client");
     }
 
     // 3. Email validation
-    if (!email) {
-      logger.info(
-        `[EmailOrchestrator] Skipping Slack message for team ${team.teamID}`,
-        {
-          reason: "Email is null or undefined",
-          teamID: team.teamID,
-        }
-      );
-      return;
-    }
+    if (!validateEmail(email, team)) return;
 
     // 4. Email content validation
     if (!email.subject || !email.from || !email.date) {
@@ -62,47 +43,36 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
       return;
     }
 
-    // Check if the email is provided
     logger.info(`[EmailOrchestrator] Processing message for team ${team.teamID}`);
-        logger.debug('Email details', {
-            subject: email.subject,
-            from: email.from,
-            date: email.date
+    logger.debug('Email details', {
+      subject: email.subject,
+      from: email.from,
+      date: email.date
     });
 
-    // Use formatRootMessage to create the message text
+    // Format the message
     logger.info("[EmailOrchestrator] Step 2: Formatting message text");
-    const { finalMessageWithHeader } = formatRootMessage(email, sentiment);
+    const { originalText, quotedText   } = formatRootMessage(email, sentiment);
 
     logger.debug("[EmailOrchestrator] Formatted message", { 
-      messageLength: finalMessageWithHeader.length 
+        hasOriginalText: !!originalText,
+        quotedTextCount: quotedText.length
     });
 
-    const slackFormattedMessage = convertMarkdownToSlack(
-      finalMessageWithHeader
-    );
+    // Process the message for Slack formatting
+    // const slackFormattedMessage = convertMarkdownToSlack(messageContent);
+    // const slackFormattedMessageWithLinks = convertMarkdownLinksToSlackLinks(
+    //   slackFormattedMessage
+    // );
 
-    const slackFormattedMessageWithLinks = convertMarkdownLinksToSlackLinks(
-      slackFormattedMessage
-    );
-
-    // Split the message into chunks
-    const messageChunks = splitMessageAtLineBreak(
-      slackFormattedMessageWithLinks
-    );
-
-    const fromAddress = email.from.address || "Unknown";
-    const toAddress = email.to[0].address || "Unknown";
-
-    // Create metadata for the message
-    console.log("[EmailOrchestrator] Step 3: Creating metadata");
+    // Create metadata
+    logger.info("[EmailOrchestrator] Step 3: Creating metadata");
     const metadata = {
-      // Metadata must follow Slack's schema
       event_type: "email_notification",
       event_payload: {
-          fromEmail: fromAddress,
-          toEmail: toAddress,
-          rootEmailId: email._id?.toString(), // Ensure it's a string
+          fromEmail: email.from.address,
+          toEmail: email.to[0].address,
+          rootEmailId: email._id?.toString(),
           rootEmailUID: email.uid?.toString(),
           teamID: team.teamID
       }
@@ -110,102 +80,145 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
 
     logger.debug('Message metadata created:', metadata);
 
+    // Create the Slack payload with proper block structure
+    const slackPayload = {
+      channel: SLACK.CHANNEL_ID,
+      text: `New ${sentiment} email from ${email.from.address}`,
+      blocks: [
+        // Header Block with Title
+        {
+          type: "section",
+          text: {
+              type: "mrkdwn",
+              text: `*New ${sentiment} Reply*`
+          }
+        },
+        // Email Details in a clean format
+        {
+          type: "section",
+          fields: [
+            {
+              type: "mrkdwn",
+              text: `*From:*\n${email.from.name} ${email.from.address}`  // Added email address
+            },
+            {
+              type: "mrkdwn",
+              text: `*To:*\n${email.to[0].address}`
+            }
+          ]
+        },
+        {
+          type: "section",
+          fields: [
+            {
+              type: "mrkdwn",
+              text: `*Subject:*\n${email.subject}`
+            },
+            {
+              type: "mrkdwn",
+              text: `*Date:*\n${new Date(email.createdAt.$date).toLocaleString()}`
+            }
+          ]
+        },
+        // Latest Reply Section
+        {
+          type: "section",
+          text: {
+              type: "mrkdwn",
+              text: "*Latest Reply:*\n" + originalText  // originalText is already a string
+          }
+        },
+        {
+          type: "divider"
+        },
+        // Thread Context after Latest Reply
+        {
+          type: "context",
+          elements: [
+            {
+              type: "mrkdwn",
+              text: `📎 Thread Context: Previous messages in thread ${email.slackReference?.threadTs}`
+            }
+          ]
+        },
+        {
+          type: "divider"
+        },
+        // Previous Messages Section
+        ...(quotedText.length > 0 ? [
+          {
+              type: "section",
+              text: {
+                  type: "mrkdwn",
+                  text: "*Previous Messages:*"
+              }
+          },
+          {
+              type: "section",
+              text: {
+                  type: "mrkdwn",
+                  text: quotedText.map(quote => (
+                    `> *From:* ${quote.author}\n` +
+                    `> *Date:* ${quote.date}\n` +
+                    `> ${quote.content.split('>').join('\n>')}`  // Add '>' to each line
+                )).join('\n')
+              }
+          }
+      ] : [])
+      ],
+      metadata: metadata,
+      ...(email.slackReference?.threadTs && {
+        thread_ts: email.slackReference.threadTs
+      })
+    };
 
-    // Create blocks for each chunk, ensuring each chunk is within the character limit
-    const blocks = messageChunks.map((chunk) => ({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: chunk.slice(0, 3000), // Ensure each block's text is within the 3000 character limit
-      },
-    }));
+    // Add CC and BCC if they exist
+    if (email.cc?.length > 0) {
+      slackPayload.blocks.splice(2, 0, {
+        type: "context",
+        elements: [{
+          type: "mrkdwn",
+          text: `*CC:* ${email.cc.map(cc => cc.address).join(', ')}`
+        }]
+      });
+    }
 
-    const slackPayload = createSlackPayload(
-      blocks, 
-      metadata, 
-      email.slackReference?.threadTs
-    );
+    if (email.bcc?.length > 0) {
+      slackPayload.blocks.splice(email.cc?.length > 0 ? 3 : 2, 0, {
+        type: "context",
+        elements: [{
+          type: "mrkdwn",
+          text: `*BCC:* ${email.bcc.map(bcc => bcc.address).join(', ')}`
+        }]
+      });
+    }
 
-
-    logger.debug('Message metadata', metadata);
-
-    // Send the root Slack message
-    const response = await client.chat.postMessage({
-      ...slackPayload,
-      thread_ts: email.slackReference?.threadTs,  // If threading
-      metadata: metadata               // Add to message
+    logger.debug('Sending message with payload:', { 
+      channel: slackPayload.channel,
+      blocksCount: slackPayload.blocks.length,
+      hasThread: !!slackPayload.thread_ts
     });
 
-    // Return both response and metadata
+    // Send the message
+    const response = await client.chat.postMessage(slackPayload);
+
+    logger.info('[EmailOrchestrator] Message sent successfully', {
+      messageTs: response.ts
+    });
+
     return {
       messageTs: response.ts,
       metadata: metadata
-  };
+    };
+
   } catch (error) {
     logger.error(
-      `[EmailOrchestrator] Error sending Slack root message or reply for team ${team.teamID}:`,
+      `[EmailOrchestrator] Error sending Slack message for team ${team.teamID}:`,
       error
     );
     console.error("Error details:", error);
     throw error;
   }
-}
-
-function createSlackPayload(blocks, metadata, threadTs) {
-  return {
-      channel: "C08DE1LEVR8",
-      text: "Test message",
-      mrkdwn: true,
-      blocks,
-      metadata,
-      ...(threadTs && { thread_ts: threadTs })
-  };
-}
-
-// Split the message into chunks of 3000 characters
-function splitMessageAtLineBreak(message, maxLength = 3000) {
-
-  if (!message) {
-    logger.warn("[EmailOrchestrator] Empty message received for chunking");
-    return [];
-  }
-
-  if (typeof message !== 'string') {
-    logger.error("[EmailOrchestrator] Invalid message type for chunking");
-    return [String(message)];
-  }
-
-  logger.debug("[EmailOrchestrator] Splitting message", { 
-    originalLength: message.length,
-    maxChunkSize: maxLength 
-  });
-
-  if (message.length <= maxLength) {
-    return [message];
-  }
-
-  const messages = [];
-  let currentMessage = "";
-  const lines = message.split("\n");
-
-  for (const line of lines) {
-    // Check if adding this line would exceed the limit
-    if (
-      (currentMessage + line + "\n").length > maxLength &&
-      currentMessage.length > 0
-    ) {
-      messages.push(currentMessage.trim());
-      currentMessage = "";
-    }
-    currentMessage += line + "\n";
-  }
-
-  // Add the remaining message if any
-  if (currentMessage.trim()) {
-    messages.push(currentMessage.trim());
-  }
-
-  return messages;
 }
 
 module.exports = {
