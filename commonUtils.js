@@ -44,6 +44,3 @@ function convertMarkdownToSlack(text) {
 
   return text;
 }
-
-
-
