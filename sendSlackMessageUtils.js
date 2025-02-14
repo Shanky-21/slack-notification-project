@@ -6,6 +6,10 @@ const {
 } = require("./commonUtils");
 const { logger } = require("./logger");
 
+const { SLACK, MESSAGE_TYPES } = require("./config");
+const { validateTeam, validateEmail } = require("./validators");
+const { createMetadata, createSlackBlocks } = require("./messageFormatter");
+
 async function testSendAsRootMessage(team, email, sentiment, client) {
   console.log("Sending Slack message as root message...");
 
@@ -17,16 +21,7 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
       Adding more input validations. 
       */
     // 1. Team validation
-    if (!team || !team.teamID) {
-      logger.info(
-        `[EmailOrchestrator] Skipping Slack message: Invalid team data`,
-        {
-          team: team ? "exists" : "null",
-          teamID: team?.teamID,
-        }
-      );
-      return; // Skip instead of throw
-    } // 2. Client validation (This should throw as it's a technical error)
+    if (!validateTeam(team)) return; // 2. Client validation (This should throw as it's a technical error)
 
     if (!client || !client.chat) {
       logger.error("[EmailOrchestrator] Slack client validation failed", {
@@ -37,16 +32,7 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
     }
 
     // 3. Email validation
-    if (!email) {
-      logger.info(
-        `[EmailOrchestrator] Skipping Slack message for team ${team.teamID}`,
-        {
-          reason: "Email is null or undefined",
-          teamID: team.teamID,
-        }
-      );
-      return;
-    }
+    if (!validateEmail(email, team)) return;
 
     // 4. Email content validation
     if (!email.subject || !email.from || !email.date) {
@@ -91,34 +77,15 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
       slackFormattedMessageWithLinks
     );
 
-    const fromAddress = email.from.address || "Unknown";
-    const toAddress = email.to[0].address || "Unknown";
-
     // Create metadata for the message
     console.log("[EmailOrchestrator] Step 3: Creating metadata");
-    const metadata = {
-      // Metadata must follow Slack's schema
-      event_type: "email_notification",
-      event_payload: {
-          fromEmail: fromAddress,
-          toEmail: toAddress,
-          rootEmailId: email._id?.toString(), // Ensure it's a string
-          rootEmailUID: email.uid?.toString(),
-          teamID: team.teamID
-      }
-    };
+    const metadata = createMetadata(email, team);
 
     logger.debug('Message metadata created:', metadata);
 
 
     // Create blocks for each chunk, ensuring each chunk is within the character limit
-    const blocks = messageChunks.map((chunk) => ({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: chunk.slice(0, 3000), // Ensure each block's text is within the 3000 character limit
-      },
-    }));
+    const blocks = createSlackBlocks(messageChunks);
 
     const slackPayload = createSlackPayload(
       blocks, 
@@ -153,8 +120,8 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
 
 function createSlackPayload(blocks, metadata, threadTs) {
   return {
-      channel: "C08DE1LEVR8",
-      text: "Test message",
+      channel: SLACK.CHANNEL_ID,
+      text: SLACK.DEFAULT_TEXT,
       mrkdwn: true,
       blocks,
       metadata,
@@ -163,7 +130,7 @@ function createSlackPayload(blocks, metadata, threadTs) {
 }
 
 // Split the message into chunks of 3000 characters
-function splitMessageAtLineBreak(message, maxLength = 3000) {
+function splitMessageAtLineBreak(message, maxLength = SLACK.MAX_MESSAGE_LENGTH) {
 
   if (!message) {
     logger.warn("[EmailOrchestrator] Empty message received for chunking");
