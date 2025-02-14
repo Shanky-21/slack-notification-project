@@ -116,37 +116,48 @@ function createSlackBlocks(messageChunks) {
     }));
 }
 
+// Modify createEnhancedSlackBlocks to handle message formatting
 function createEnhancedSlackBlocks(email, messageChunks, sentiment) {
-    const blocks = [
-        ...createHeaderBlock(email.subject, sentiment),
-        createEmailDetailsBlock(email),
-        createDividerBlock()
-    ];
+  // Validate and preprocess each chunk
+  const processedChunks = messageChunks
+      .filter(chunk => validateMessageFormat(chunk))
+      .map(chunk => preprocessMessage(chunk));
 
-    // Add thread context if it exists
-    const threadContext = createThreadContextBlock(email);
-    if (threadContext) {
-        blocks.push(threadContext);
-        blocks.push(createDividerBlock());
-    }
+  if (processedChunks.length === 0) {
+      logger.warn('[EmailOrchestrator] No valid message chunks found');
+      processedChunks.push('(No message content available)');
+  }
 
-    // Add message content
-    blocks.push(...messageChunks.map(chunk => ({
-        type: "section",
-        text: {
-            type: "mrkdwn",
-            text: chunk
-        }
-    })));
+  const blocks = [
+      ...createHeaderBlock(email.subject, sentiment),
+      createEmailDetailsBlock(email),
+      createDividerBlock()
+  ];
 
-    // Add attachments if they exist
-    const attachmentBlocks = createAttachmentBlocks(email);
-    if (attachmentBlocks.length > 0) {
-        blocks.push(createDividerBlock());
-        blocks.push(...attachmentBlocks);
-    }
+  // Add thread context if it exists
+  const threadContext = createThreadContextBlock(email);
+  if (threadContext) {
+      blocks.push(threadContext);
+      blocks.push(createDividerBlock());
+  }
 
-    return blocks;
+  // Add processed message content
+  blocks.push(...processedChunks.map(chunk => ({
+      type: "section",
+      text: {
+          type: "mrkdwn",
+          text: chunk
+      }
+  })));
+
+  // Add attachments if they exist
+  const attachmentBlocks = createAttachmentBlocks(email);
+  if (attachmentBlocks.length > 0) {
+      blocks.push(createDividerBlock());
+      blocks.push(...attachmentBlocks);
+  }
+
+  return blocks;
 }
 
 function formatSlackPayload(email, sentiment, blocks, metadata) {
@@ -162,19 +173,41 @@ function formatSlackPayload(email, sentiment, blocks, metadata) {
     };
 }
 
-function formatEnhancedSlackPayload(email, sentiment, messageChunks, metadata) {
-    const blocks = createEnhancedSlackBlocks(email, messageChunks, sentiment);
 
-    return {
-        channel: SLACK.CHANNEL_ID,
-        text: `New ${sentiment} email from ${email.from.address}`, // Fallback text
-        mrkdwn: true,
-        blocks,
-        metadata,
-        ...(email.slackReference?.threadTs && {
-            thread_ts: email.slackReference.threadTs
-        })
-    };
+function formatEnhancedSlackPayload(email, sentiment, messageChunks, metadata) {
+  // Validate message chunks
+  if (!Array.isArray(messageChunks)) {
+      logger.error('[EmailOrchestrator] Invalid message chunks format', {
+          type: typeof messageChunks
+      });
+      messageChunks = ['(Message format error)'];
+  }
+
+  const blocks = createEnhancedSlackBlocks(email, messageChunks, sentiment);
+
+  // Ensure we don't exceed Slack's limits
+  if (blocks.length > 50) {
+      logger.warn('[EmailOrchestrator] Too many blocks, truncating message');
+      blocks.splice(49, blocks.length - 49);
+      blocks.push({
+          type: "context",
+          elements: [{
+              type: "mrkdwn",
+              text: "*Note:* Message was truncated due to length"
+          }]
+      });
+  }
+
+  return {
+      channel: SLACK.CHANNEL_ID,
+      text: `New ${sentiment} email from ${email.from.address}`, // Fallback text
+      mrkdwn: true,
+      blocks,
+      metadata,
+      ...(email.slackReference?.threadTs && {
+          thread_ts: email.slackReference.threadTs
+      })
+  };
 }
 
 function splitMessageAtLineBreak(message, maxLength = SLACK.MAX_MESSAGE_LENGTH) {
@@ -216,7 +249,40 @@ function splitMessageAtLineBreak(message, maxLength = SLACK.MAX_MESSAGE_LENGTH) 
     return messages;
 }
 
+function validateMessageFormat(message) {
+  if (!message || typeof message !== 'string') {
+      logger.error('[EmailOrchestrator] Invalid message format', {
+          type: typeof message,
+          value: message
+      });
+      return false;
+  }
+  return true;
+}
+
+function preprocessMessage(message) {
+  if (!validateMessageFormat(message)) {
+      return '';
+  }
+
+  // Remove excessive newlines
+  message = message.replace(/\n{3,}/g, '\n\n');
+  
+  // Remove trailing/leading whitespace from each line
+  message = message.split('\n')
+      .map(line => line.trim())
+      .join('\n');
+
+  // Ensure quoted text is properly formatted
+  message = message.replace(/^>(>+)/gm, '>');  // Remove multiple quote levels
+  message = message.replace(/^>(?!\s)/gm, '> '); // Ensure space after quote marker
+
+  return message;
+}
+
 module.exports = {
+    validateMessageFormat,
+    preprocessMessage,
     createHeaderBlock,
     createMetadata,
     createEmailDetailsBlock,

@@ -407,7 +407,7 @@ const messageFormatters = {
 
        let message = messageProcessors.combineOriginalAndQuotedText(originalText, quotedText);
        const finalMessage = messageProcessors.cleanAndFormatFinalMessage(message);
-       const finalMessageWithHeader = `${headerMessage}\n${textFormatters.cleanMarkdownSpecialCharacters(finalMessage)}`;
+       const finalMessageWithHeader = `${textFormatters.cleanMarkdownSpecialCharacters(finalMessage)}`;
        return {
            finalMessageWithHeader,
            originalText,

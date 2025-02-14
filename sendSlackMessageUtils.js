@@ -14,6 +14,8 @@ const {
   createMetadata, 
   createSlackBlocks,
   formatSlackPayload,
+  validateMessageFormat,
+  preprocessMessage,
   formatEnhancedSlackPayload,
   splitMessageAtLineBreak
 } = require("./messageFormatter");
@@ -80,12 +82,22 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
       messageLength: finalMessageWithHeader.length 
     });
 
+    // Validate the formatted message
+    if (!validateMessageFormat(finalMessageWithHeader)) {
+      logger.error("[EmailOrchestrator] Invalid message format after initial formatting");
+      throw new Error("Invalid message format");
+  }
+// Process the message
     const slackFormattedMessage = convertMarkdownToSlack(finalMessageWithHeader);
+    const slackFormattedMessageWithLinks = convertMarkdownLinksToSlackLinks(
+        slackFormattedMessage
+    );
 
-    const slackFormattedMessageWithLinks = convertMarkdownLinksToSlackLinks(slackFormattedMessage);
+    // Preprocess the message before splitting
+    const processedMessage = preprocessMessage(slackFormattedMessageWithLinks);
 
-    // Split the message into chunks
-    const messageChunks = splitMessageAtLineBreak(slackFormattedMessageWithLinks);
+    // Split into chunks
+    const messageChunks = splitMessageAtLineBreak(processedMessage);
 
     // Create metadata for the message
     console.log("[EmailOrchestrator] Step 3: Creating metadata");
@@ -93,9 +105,9 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
 
     logger.debug('Message metadata created:', metadata);
 
-    const headerBlocks = createHeaderBlock(finalMessageWithHeader, sentiment);
-    const contentBlocks = createSlackBlocks(messageChunks);
-    const blocks = [...headerBlocks, ...contentBlocks];
+    // const headerBlocks = createHeaderBlock(finalMessageWithHeader, sentiment);
+    // const contentBlocks = createSlackBlocks(messageChunks);
+    // const blocks = [...headerBlocks, ...contentBlocks];
 
 
     // Create blocks for each chunk, ensuring each chunk is within the character limit
