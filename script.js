@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { testSendAsRootMessage } = require('./sendSlackMessageUtils');
 const { WebClient } = require('@slack/web-api');
-
+const { logger } = require("./logger");
 console.log("Bot Token:", process.env.SLACK_BOT_TOKEN ? "Token exists" : "No token found");
 // Initialize Slack client
 const client = new WebClient(process.env.SLACK_BOT_TOKEN);
@@ -127,10 +127,17 @@ const testSendEmailToSlack = async () => {
         }
 
 
-      await testSendAsRootMessage(team, email, sentiment, client)
+      const result = await testSendAsRootMessage(team, email, sentiment, client)
+
+      logger.info('Message sent successfully', {
+        messageTimestamp: result.messageTs,
+        metadata: result.metadata
+      });
+
       process.exit(0);
   } catch (error) {
       console.error('Error sending email to Slack:', error);
+      process.exit(1);
   }
 };
 
