@@ -28,6 +28,84 @@ function createMetadata(email, team) {
     };
 }
 
+function createEmailDetailsBlock(email) {
+    return {
+        type: "section",
+        fields: [
+            {
+                type: "mrkdwn",
+                text: `*From:*\n${email.from.name || email.from.address}`
+            },
+            {
+                type: "mrkdwn",
+                text: `*To:*\n${email.to.map(t => t.address).join(', ')}`
+            },
+            {
+                type: "mrkdwn",
+                text: `*Subject:*\n${email.subject}`
+            },
+            {
+                type: "mrkdwn",
+                text: `*Date:*\n${new Date(email.date).toLocaleString()}`
+            }
+        ]
+    };
+}
+
+function createThreadContextBlock(email) {
+    if (!email.slackReference?.threadTs) {
+        return null;
+    }
+
+    return {
+        type: "context",
+        elements: [
+            {
+                type: "mrkdwn",
+                text: `:thread: *Thread Context:* Previous messages in thread ${email.slackReference.threadTs}`
+            }
+        ]
+    };
+}
+
+function createDividerBlock() {
+    return {
+        type: "divider"
+    };
+}
+
+function createAttachmentBlocks(email) {
+    if (!email.attachments || email.attachments.length === 0) {
+        return [];
+    }
+
+    return [
+        {
+            type: "context",
+            elements: [
+                {
+                    type: "mrkdwn",
+                    text: `:paperclip: *Attachments:* ${email.attachments.length} file(s)`
+                }
+            ]
+        },
+        ...email.attachments.map(attachment => ({
+            type: "section",
+            text: {
+                type: "mrkdwn",
+                text: `• ${attachment.filename} (${formatFileSize(attachment.size)})`
+            }
+        }))
+    ];
+}
+
+function formatFileSize(bytes) {
+    if (!bytes) return '0 B';
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
+}
+
 function createSlackBlocks(messageChunks) {
     return messageChunks.map(chunk => ({
         type: "section",
@@ -38,10 +116,58 @@ function createSlackBlocks(messageChunks) {
     }));
 }
 
+function createEnhancedSlackBlocks(email, messageChunks, sentiment) {
+    const blocks = [
+        ...createHeaderBlock(email.subject, sentiment),
+        createEmailDetailsBlock(email),
+        createDividerBlock()
+    ];
+
+    // Add thread context if it exists
+    const threadContext = createThreadContextBlock(email);
+    if (threadContext) {
+        blocks.push(threadContext);
+        blocks.push(createDividerBlock());
+    }
+
+    // Add message content
+    blocks.push(...messageChunks.map(chunk => ({
+        type: "section",
+        text: {
+            type: "mrkdwn",
+            text: chunk
+        }
+    })));
+
+    // Add attachments if they exist
+    const attachmentBlocks = createAttachmentBlocks(email);
+    if (attachmentBlocks.length > 0) {
+        blocks.push(createDividerBlock());
+        blocks.push(...attachmentBlocks);
+    }
+
+    return blocks;
+}
+
 function formatSlackPayload(email, sentiment, blocks, metadata) {
     return {
         channel: SLACK.CHANNEL_ID,
         text: SLACK.DEFAULT_TEXT,
+        mrkdwn: true,
+        blocks,
+        metadata,
+        ...(email.slackReference?.threadTs && {
+            thread_ts: email.slackReference.threadTs
+        })
+    };
+}
+
+function formatEnhancedSlackPayload(email, sentiment, messageChunks, metadata) {
+    const blocks = createEnhancedSlackBlocks(email, messageChunks, sentiment);
+
+    return {
+        channel: SLACK.CHANNEL_ID,
+        text: `New ${sentiment} email from ${email.from.address}`, // Fallback text
         mrkdwn: true,
         blocks,
         metadata,
@@ -93,7 +219,13 @@ function splitMessageAtLineBreak(message, maxLength = SLACK.MAX_MESSAGE_LENGTH) 
 module.exports = {
     createHeaderBlock,
     createMetadata,
+    createEmailDetailsBlock,
+    createThreadContextBlock,
+    createDividerBlock,
+    createAttachmentBlocks,
     createSlackBlocks,
+    createEnhancedSlackBlocks,
     formatSlackPayload,
+    formatEnhancedSlackPayload,
     splitMessageAtLineBreak
 };

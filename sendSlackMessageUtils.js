@@ -14,6 +14,7 @@ const {
   createMetadata, 
   createSlackBlocks,
   formatSlackPayload,
+  formatEnhancedSlackPayload,
   splitMessageAtLineBreak
 } = require("./messageFormatter");
 
@@ -100,7 +101,14 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
     // Create blocks for each chunk, ensuring each chunk is within the character limit
     // const blocks = createSlackBlocks(messageChunks);
 
-    const slackPayload = formatSlackPayload(email, sentiment, blocks, metadata);
+    // const slackPayload = formatSlackPayload(email, sentiment, blocks, metadata);
+    const slackPayload = formatEnhancedSlackPayload(email, sentiment, messageChunks, metadata);
+
+        logger.debug('Sending enhanced message with payload:', { 
+            channel: slackPayload.channel,
+            blocksCount: slackPayload.blocks.length,
+            hasAttachments: email.attachments?.length > 0
+        });
 
 
     logger.debug('Message metadata', metadata);
