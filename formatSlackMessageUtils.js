@@ -399,22 +399,60 @@ const messageFormatters = {
    },
 
 
-   formatRootMessage(email, sentiment) {
-       const headerMessage = messageFormatters.constructHeaderMessage(email, sentiment);
-       const messages = messageProcessors.extractEmailContent(email.text);
-       const { originalText, quotedText } = messageProcessors.processMessages(messages);
+    formatRootMessage(email, sentiment) {
+        const headerMessage = messageFormatters.constructHeaderMessage(email, sentiment);
+        const messages = messageProcessors.extractEmailContent(email.text);
+        const { originalText, quotedText } = messageProcessors.processMessages(messages);
 
+        // Format original text
+        const formattedOriginalText = originalText
+            .filter(line => line.trim() !== '')  // Remove empty lines
+            .join('\n');
 
-       let message = messageProcessors.combineOriginalAndQuotedText(originalText, quotedText);
-       const finalMessage = messageProcessors.cleanAndFormatFinalMessage(message);
-       const finalMessageWithHeader = `${textFormatters.cleanMarkdownSpecialCharacters(finalMessage)}`;
-       return {
-           finalMessageWithHeader,
-           originalText,
-           quotedText,
-           headerMessage
-       };
-   }
+        // Format quoted text with better visual separation
+        const formattedQuotedText = quotedText
+            .filter(line => line.trim() !== '')
+            .map(line => {
+                // If line is a reply header (contains "wrote:")
+                if (line.includes('wrote:')) {
+                    return `\n>️ 💬 *Previous Message:*\n>${line}`;
+                }
+                // Regular quoted text
+                return `>${line}`;
+            })
+            .join('\n');
+
+        // Combine everything with proper spacing and sections
+        const finalMessageWithHeader = [
+            // Header section
+            headerMessage,
+
+            // Divider
+            '───────────────────',
+
+            // Latest Reply section
+            '*Latest Reply:*',
+            formattedOriginalText,
+
+            // Previous Messages section (if exists)
+            ...(formattedQuotedText ? [
+                '\n*Previous Messages:*',
+                formattedQuotedText
+            ] : [])
+        ].join('\n');
+
+        // Clean up any markdown formatting issues
+        const cleanedMessage = textFormatters.cleanMarkdownSpecialCharacters(finalMessageWithHeader)
+            .replace(/\n{3,}/g, '\n\n')  // Replace multiple newlines with double newlines
+            .trim();
+
+        return {
+            finalMessageWithHeader: cleanedMessage,
+            originalText,
+            quotedText,
+            headerMessage
+        };
+    }
 };
 
 
