@@ -8,8 +8,23 @@ const { logger } = require("./logger");
 
 const { SLACK, MESSAGE_TYPES } = require("./config");
 const { validateTeam, validateEmail } = require("./validators");
-const { createMetadata, createSlackBlocks } = require("./messageFormatter");
 
+const { 
+  createHeaderBlock, 
+  createMetadata, 
+  createSlackBlocks,
+  formatSlackPayload,
+  splitMessageAtLineBreak
+} = require("./messageFormatter");
+
+/**
+ * Sends an email as a Slack message
+ * @param {Team} team - Team information
+ * @param {Email} email - Email to be sent
+ * @param {string} sentiment - Email sentiment
+ * @param {WebClient} client - Slack client
+ * @returns {Promise<SlackResponse>} - Slack message response
+ */
 async function testSendAsRootMessage(team, email, sentiment, client) {
   console.log("Sending Slack message as root message...");
 
@@ -64,18 +79,12 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
       messageLength: finalMessageWithHeader.length 
     });
 
-    const slackFormattedMessage = convertMarkdownToSlack(
-      finalMessageWithHeader
-    );
+    const slackFormattedMessage = convertMarkdownToSlack(finalMessageWithHeader);
 
-    const slackFormattedMessageWithLinks = convertMarkdownLinksToSlackLinks(
-      slackFormattedMessage
-    );
+    const slackFormattedMessageWithLinks = convertMarkdownLinksToSlackLinks(slackFormattedMessage);
 
     // Split the message into chunks
-    const messageChunks = splitMessageAtLineBreak(
-      slackFormattedMessageWithLinks
-    );
+    const messageChunks = splitMessageAtLineBreak(slackFormattedMessageWithLinks);
 
     // Create metadata for the message
     console.log("[EmailOrchestrator] Step 3: Creating metadata");
@@ -83,31 +92,28 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
 
     logger.debug('Message metadata created:', metadata);
 
+    const headerBlocks = createHeaderBlock(finalMessageWithHeader, sentiment);
+    const contentBlocks = createSlackBlocks(messageChunks);
+    const blocks = [...headerBlocks, ...contentBlocks];
+
 
     // Create blocks for each chunk, ensuring each chunk is within the character limit
-    const blocks = createSlackBlocks(messageChunks);
+    // const blocks = createSlackBlocks(messageChunks);
 
-    const slackPayload = createSlackPayload(
-      blocks, 
-      metadata, 
-      email.slackReference?.threadTs
-    );
+    const slackPayload = formatSlackPayload(email, sentiment, blocks, metadata);
 
 
     logger.debug('Message metadata', metadata);
 
     // Send the root Slack message
-    const response = await client.chat.postMessage({
-      ...slackPayload,
-      thread_ts: email.slackReference?.threadTs,  // If threading
-      metadata: metadata               // Add to message
-    });
+    const response = await client.chat.postMessage(slackPayload);
 
     // Return both response and metadata
     return {
       messageTs: response.ts,
       metadata: metadata
   };
+
   } catch (error) {
     logger.error(
       `[EmailOrchestrator] Error sending Slack root message or reply for team ${team.teamID}:`,
@@ -118,62 +124,6 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
   }
 }
 
-function createSlackPayload(blocks, metadata, threadTs) {
-  return {
-      channel: SLACK.CHANNEL_ID,
-      text: SLACK.DEFAULT_TEXT,
-      mrkdwn: true,
-      blocks,
-      metadata,
-      ...(threadTs && { thread_ts: threadTs })
-  };
-}
-
-// Split the message into chunks of 3000 characters
-function splitMessageAtLineBreak(message, maxLength = SLACK.MAX_MESSAGE_LENGTH) {
-
-  if (!message) {
-    logger.warn("[EmailOrchestrator] Empty message received for chunking");
-    return [];
-  }
-
-  if (typeof message !== 'string') {
-    logger.error("[EmailOrchestrator] Invalid message type for chunking");
-    return [String(message)];
-  }
-
-  logger.debug("[EmailOrchestrator] Splitting message", { 
-    originalLength: message.length,
-    maxChunkSize: maxLength 
-  });
-
-  if (message.length <= maxLength) {
-    return [message];
-  }
-
-  const messages = [];
-  let currentMessage = "";
-  const lines = message.split("\n");
-
-  for (const line of lines) {
-    // Check if adding this line would exceed the limit
-    if (
-      (currentMessage + line + "\n").length > maxLength &&
-      currentMessage.length > 0
-    ) {
-      messages.push(currentMessage.trim());
-      currentMessage = "";
-    }
-    currentMessage += line + "\n";
-  }
-
-  // Add the remaining message if any
-  if (currentMessage.trim()) {
-    messages.push(currentMessage.trim());
-  }
-
-  return messages;
-}
 
 module.exports = {
   testSendAsRootMessage,

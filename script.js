@@ -6,6 +6,14 @@ console.log("Bot Token:", process.env.SLACK_BOT_TOKEN ? "Token exists" : "No tok
 // Initialize Slack client
 const client = new WebClient(process.env.SLACK_BOT_TOKEN);
 
+const { 
+  createHeaderBlock, 
+  createMetadata, 
+  createSlackBlocks,
+  formatSlackPayload,
+  splitMessageAtLineBreak
+} = require("./messageFormatter");
+
 const testSendEmailToSlack = async () => {
   try {
       const sentiment = "Good"
