@@ -1,6 +1,6 @@
 // cache.js
 const NodeCache = require('node-cache');
-const { logger } = require('./logger');
+const { logger } = require('../middleware/logger');
 
 // Initialize cache with 24 hours TTL (time to live)
 const cache = new NodeCache({ 

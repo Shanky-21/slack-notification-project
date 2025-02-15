@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const { App } = require('@slack/bolt');
-const { logger } = require('./logger');
+const { logger } = require('./middleware/logger');
 const { WebClient } = require('@slack/web-api');
 
 const expressApp = express();
