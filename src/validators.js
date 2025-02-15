@@ -1,6 +1,6 @@
 // validators.js
 const { logger } = require('./logger');
-const { VALIDATION } = require('./config');
+const { VALIDATION } = require('./config/config');
 
 /**
  * Validates team object

@@ -6,7 +6,7 @@ const {
   splitMessageAtLineBreak,
 } = require("./commonUtils");
 const { logger } = require("./logger");
-const { SLACK } = require("./config");
+const { SLACK } = require("./config/config");
 const { validateTeam, validateEmail } = require("./validators");
 // In both server.js and sendSlackMessageUtils.js
 const { messageStore } = require('./storage');  // Instead of './cache'
