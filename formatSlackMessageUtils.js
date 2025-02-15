@@ -224,164 +224,233 @@ const messageProcessors = {
     },
 
 
-//    processMessages(messages) {
-//        let stopAddingText = false;
-//        let originalText = [];
-//        let quotedText = [];
-//        let originalTextIsFound = false;
-//        let footerDetected = false;
-//        let replyHeaderCount = 0;
+   processMessages(messages) {
+       let stopAddingText = false;
+       let originalText = [];
+       let quotedText = [];
+       let originalTextIsFound = false;
+       let footerDetected = false;
+       let replyHeaderCount = 0;
 
 
-//        for (let msg of messages) {
-//            const lines = textFormatters.escapeMarkdown(msg.content.trim()).split('\n');
+       for (let msg of messages) {
+           const lines = textFormatters.escapeMarkdown(msg.content.trim()).split('\n');
 
 
-//            for (let line of lines) {
+           for (let line of lines) {
 
 
-//                // Stop processing if the second reply header has been encountered
-//                if (footerDetected || replyHeaderCount >= 2) {
-//                    break;
-//                }
+               // Stop processing if the second reply header has been encountered
+               if (footerDetected || replyHeaderCount >= 2) {
+                   break;
+               }
 
 
-//                // Check for footer patterns
-//                if (footerRegexPatterns.some(pattern => pattern.test(line.trim()))) {
-//                    footerDetected = true;
-//                    break;
-//                }
+               // Check for footer patterns
+               if (footerRegexPatterns.some(pattern => pattern.test(line.trim()))) {
+                   footerDetected = true;
+                   break;
+               }
 
 
-//                let chevronCount = (line.match(/^>+/) || [''])[0].length;
+               let chevronCount = (line.match(/^>+/) || [''])[0].length;
 
 
-//                if (!stopAddingText) {
-//                    line = line.replace(/^>+(\s*>+)?/, '').trim();
-//                }
+               if (!stopAddingText) {
+                   line = line.replace(/^>+(\s*>+)?/, '').trim();
+               }
 
 
-//                // Check for any reply header (reply, forwarded, or sent headers)
-//                if (emailPatterns.isReplyHeader(line)) {
-//                    replyHeaderCount++;
-//                    if (replyHeaderCount === 2) {
-//                        stopAddingText = true;
-//                        break;
-//                    }
+               // Check for any reply header (reply, forwarded, or sent headers)
+               if (emailPatterns.isReplyHeader(line)) {
+                   replyHeaderCount++;
+                   if (replyHeaderCount === 2) {
+                       stopAddingText = true;
+                       break;
+                   }
 
 
-//                    const matchedText = [
-//                        emailPatterns.replyHeaders.standard,
-//                        emailPatterns.replyHeaders.complex
-//                    ].reduce((match, pattern) => match || line.match(pattern), null);
+                   const matchedText = [
+                       emailPatterns.replyHeaders.standard,
+                       emailPatterns.replyHeaders.complex
+                   ].reduce((match, pattern) => match || line.match(pattern), null);
 
 
-//                    const splitLine = line.split(matchedText);
+                   const splitLine = line.split(matchedText);
 
 
-//                    originalText.push(splitLine[0] || '');
-//                    quotedText.push(`${matchedText[0]} \n>${splitLine[1]?.replace(/\\\\/g, '').trim() || ''}\n\n`);
+                   originalText.push(splitLine[0] || '');
+                   quotedText.push(`${matchedText[0]} \n>${splitLine[1]?.replace(/\\\\/g, '').trim() || ''}\n\n`);
 
 
-//                    originalTextIsFound = true;
-//                    continue;
-//                }
+                   originalTextIsFound = true;
+                   continue;
+               }
 
 
-//                // Detect Separator Dashes
-//                if (emailPatterns.headers.dash.test(line)) {
-//                    stopAddingText = true;
-//                    if (replyHeaderCount < 2) {
-//                        originalText.push(line.trim());
-//                    }
-//                    break;
-//                }
+               // Detect Separator Dashes
+               if (emailPatterns.headers.dash.test(line)) {
+                   stopAddingText = true;
+                   if (replyHeaderCount < 2) {
+                       originalText.push(line.trim());
+                   }
+                   break;
+               }
 
 
-//                // Handle quoted text lines (`>`)
-//                if (line.startsWith('>')) {
-//                    quotedText.push(line.replace(/^>\s*/, ''));
-//                    break;
-//                }
+               // Handle quoted text lines (`>`)
+               if (line.startsWith('>')) {
+                   quotedText.push(line.replace(/^>\s*/, ''));
+                   break;
+               }
 
 
-//                // Handle nested quoted text
-//                if (chevronCount > 0 && originalTextIsFound) {
-//                    quotedText.push(line.replace(/^>\s*/, ''));
-//                    break;
-//                }
+               // Handle nested quoted text
+               if (chevronCount > 0 && originalTextIsFound) {
+                   quotedText.push(line.replace(/^>\s*/, ''));
+                   break;
+               }
 
 
-//                // Add to originalText if replyHeaderCount < 2
-//                if (replyHeaderCount < 2) {
-//                    originalText.push(line);
-//                }
-//            }
+               // Add to originalText if replyHeaderCount < 2
+               if (replyHeaderCount < 2) {
+                   originalText.push(line);
+               }
+           }
 
 
-//            // Stop processing messages if second reply header is encountered
-//            if (footerDetected || replyHeaderCount >= 2) {
-//                break;
-//            }
-//        }
-//        return { originalText, quotedText };
-//    },
+           // Stop processing messages if second reply header is encountered
+           if (footerDetected || replyHeaderCount >= 2) {
+               break;
+           }
+       }
+       return { originalText, quotedText };
+   },
 
-processMessages(messages) {
-    for (let msg of messages) {
-        const text = msg.content;
+// processMessages(messages) {
+//     for (let msg of messages) {
+//         const text = msg.content;
         
-        // Split by the first 'wrote:' occurrence
-        const [latestPart, ...olderParts] = text.split(/wrote:/);
+//         // Split by the first 'wrote:' occurrence
+//         const [latestPart, ...olderParts] = text.split(/wrote:/);
         
-        // Get latest reply (everything before "On")
-        const latestReply = latestPart.split(/On /)[0].trim();
+//         // Get latest reply (everything before "On")
+//         const latestReply = latestPart.split(/On /)[0].trim();
         
         
-        // Get first previous reply
-        let previousReply = null;
-        if (olderParts.length > 0) {
-            const firstReplyPart = olderParts[0];
+//         // Get first previous reply
+//         let previousReply = null;
+//         if (olderParts.length > 0) {
+//             const firstReplyPart = olderParts[0];
             
-            // Extract date and author information
-            const dateMatch = latestPart.match(/On (.+?) at (.+?) </);
-            const emailMatch = latestPart.match(/<(.+?)>/);
+//             // Extract date and author information
+//             const dateMatch = latestPart.match(/On (.+?) at (.+?) </);
+//             const emailMatch = latestPart.match(/<(.+?)>/);
             
-            previousReply = {
-                content: firstReplyPart.split('----')[0].trim()
-                    .replace(/^>+/gm, '') // Remove '>' from the start of lines
-                    .split('\n')
-                    .map(line => line.trim())
-                    .filter(line => line)
-                    .join('\n'),
-                date: dateMatch ? `${dateMatch[1]} at ${dateMatch[2]}` : '',
-                author: emailMatch ? emailMatch[1] : ''
-            };
-        }
+//             previousReply = {
+//                 content: firstReplyPart.split('----')[0].trim()
+//                     .replace(/^>+/gm, '') // Remove '>' from the start of lines
+//                     .split('\n')
+//                     .map(line => line.trim())
+//                     .filter(line => line)
+//                     .join('\n'),
+//                 date: dateMatch ? `${dateMatch[1]} at ${dateMatch[2]}` : '',
+//                 author: emailMatch ? emailMatch[1] : ''
+//             };
+//         }
 
-        // Clean up the latest reply
-        const cleanedLatestReply = latestReply
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line)
-            .join('\n');
+//         // Clean up the latest reply
+//         const cleanedLatestReply = latestReply
+//             .split('\n')
+//             .map(line => line.trim())
+//             .filter(line => line)
+//             .join('\n');
 
-        logger.debug('Processed message parts:', {
-            latestReply: cleanedLatestReply,
-            hasPreviousReply: !!previousReply
-        });
+//         logger.debug('Processed message parts:', {
+//             latestReply: cleanedLatestReply,
+//             hasPreviousReply: !!previousReply
+//         });
 
-        return {
-            originalText: cleanedLatestReply,
-            quotedText: previousReply ? [previousReply] : []
-        };
-    }
+//         return {
+//             originalText: cleanedLatestReply,
+//             quotedText: previousReply ? [previousReply] : []
+//         };
+//     }
 
-    return {
-        originalText: '',
-        quotedText: []
-    };
-},
+//     return {
+//         originalText: '',
+//         quotedText: []
+//     };
+// },
+
+// processMessages(messages) {
+//     let originalText = [];
+//     let quotedText = [];
+//     let footerDetected = false;
+//     let replyHeaderCount = 0;
+
+//     for (let msg of messages) {
+//         const text = msg.content;
+
+//         // Split by the first 'wrote:' occurrence
+//         const [latestPart, ...olderParts] = text.split(/wrote:/);
+
+//         // Get latest reply (everything before "On")
+//         const latestReply = latestPart.split(/On /)[0].trim();
+
+//         // Clean up the latest reply
+//         const cleanedLatestReply = latestReply
+//             .split('\n')
+//             .map(line => line.trim())
+//             .filter(line => line)
+//             .join('\n');
+
+//         // Check for reply headers using regex patterns
+//         const replyHeaderRegex = emailPatterns.replyHeaders.standard;
+//         const complexReplyHeaderRegex = emailPatterns.replyHeaders.complex;
+
+//         // Check for footer patterns
+//         if (footerRegexPatterns.some(pattern => pattern.test(cleanedLatestReply))) {
+//             footerDetected = true;
+//         }
+
+//         // Process older replies if they exist
+//         if (olderParts.length > 0) {
+//             const firstReplyPart = olderParts[0];
+
+//             // Extract date and author information
+//             const dateMatch = latestPart.match(/On (.+?) at (.+?) </);
+//             const emailMatch = latestPart.match(/<(.+?)>/);
+
+//             const previousReply = {
+//                 content: firstReplyPart.split('----')[0].trim()
+//                     .replace(/^>+/gm, '') // Remove '>' from the start of lines
+//                     .split('\n')
+//                     .map(line => line.trim())
+//                     .filter(line => line)
+//                     .join('\n'),
+//                 date: dateMatch ? `${dateMatch[1]} at ${dateMatch[2]}` : '',
+//                 author: emailMatch ? emailMatch[1] : ''
+//             };
+
+//             quotedText.push(previousReply);
+//         }
+
+//         // Log the processed message parts
+//         logger.debug('Processed message parts:', {
+//             latestReply: cleanedLatestReply,
+//             hasPreviousReply: quotedText.length > 0
+//         });
+
+//         // Add the cleaned latest reply to original text
+//         originalText.push(cleanedLatestReply);
+//     }
+
+//     return {
+//         originalText: originalText.join('\n').trim(),
+//         quotedText
+//     };
+// },
 
 
    combineOriginalAndQuotedText(originalText, quotedText) {
@@ -395,9 +464,111 @@ processMessages(messages) {
            .replace(/(> *\n> *\n)+/g, '>\n')
            .replace(/>\s*$/g, '');
        return textFormatters.formatSlackLinksAndEmails(cleanedFinalMessage);
-   }
-};
+   },
 
+//    processMessages(messages) {
+//     let stopAddingText = false;
+//     let originalText = [];
+//     let quotedText = [];
+//     let originalTextIsFound = false;
+//     let footerDetected = false;
+//     let replyHeaderCount = 0;
+//     let currentQuote = {
+//         content: [],
+//         date: '',
+//         author: ''
+//     };
+
+//     for (let msg of messages) {
+//         const lines = textFormatters.escapeMarkdown(msg.content.trim()).split('\n');
+
+//         for (let line of lines) {
+//             // Stop processing if the second reply header has been encountered
+//             if (footerDetected || replyHeaderCount >= 2) {
+//                 break;
+//             }
+
+//             // Check for footer patterns
+//             if (footerRegexPatterns.some(pattern => pattern.test(line.trim()))) {
+//                 footerDetected = true;
+//                 break;
+//             }
+
+//             let chevronCount = (line.match(/^>+/) || [''])[0].length;
+
+//             if (!stopAddingText) {
+//                 line = line.replace(/^>+(\s*>+)?/, '').trim();
+//             }
+
+//             // Check for any reply header (reply, forwarded, or sent headers)
+//             if (emailPatterns.isReplyHeader(line)) {
+//                 replyHeaderCount++;
+//                 if (replyHeaderCount === 2) {
+//                     stopAddingText = true;
+//                     break;
+//                 }
+
+//                 const matchedText = [
+//                     emailPatterns.replyHeaders.standard,
+//                     emailPatterns.replyHeaders.complex
+//                 ].reduce((match, pattern) => match || line.match(pattern), null);
+
+//                 if (matchedText) {
+//                     // Extract date and author if possible
+//                     const dateMatch = line.match(/On (.+?) at (.+?) </);
+//                     const emailMatch = line.match(/<(.+?)>/);
+                    
+//                     currentQuote.date = dateMatch ? `${dateMatch[1]} at ${dateMatch[2]}` : '';
+//                     currentQuote.author = emailMatch ? emailMatch[1] : '';
+//                 }
+
+//                 const splitLine = line.split(matchedText);
+//                 originalText.push(splitLine[0] || '');
+                
+//                 if (splitLine[1]) {
+//                     currentQuote.content.push(splitLine[1].replace(/\\\\/g, '').trim());
+//                 }
+
+//                 originalTextIsFound = true;
+//                 continue;
+//             }
+
+//             // Handle quoted text lines
+//             if (line.startsWith('>') || (chevronCount > 0 && originalTextIsFound)) {
+//                 currentQuote.content.push(line.replace(/^>\s*/, ''));
+//                 continue;
+//             }
+
+//             // Add to originalText if not in quoted section
+//             if (replyHeaderCount < 1) {
+//                 originalText.push(line);
+//             }
+//         }
+
+//         if (footerDetected || replyHeaderCount >= 2) {
+//             break;
+//         }
+//     }
+
+//     // Clean up and format the results
+//     const cleanedOriginalText = originalText
+//         .filter(line => line.trim())
+//         .join('\n');
+
+//     const formattedQuotedText = currentQuote.content.length > 0 ? [{
+//         content: currentQuote.content
+//             .filter(line => line.trim())
+//             .join('\n'),
+//         date: currentQuote.date,
+//         author: currentQuote.author
+//     }] : [];
+
+//     return {
+//         originalText: cleanedOriginalText,
+//         quotedText: formattedQuotedText
+//     };
+// }
+};
 
 // Message formatting functions
 const messageFormatters = {
