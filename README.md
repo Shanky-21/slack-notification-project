@@ -23,6 +23,10 @@ Newer Message Format: [ 1st version ]
 
 ![Screenshot from 2025-02-15 03-36-41](https://github.com/user-attachments/assets/1c5d746c-6eb9-4a2a-89fa-53b231a9c481)
 
+handled case for long emails. 
+
+![Screenshot from 2025-02-15 23-52-54](https://github.com/user-attachments/assets/55d9d736-8d05-4628-a7a9-9be53533308e)
+
 
 
 
