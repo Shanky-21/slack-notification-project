@@ -21,7 +21,7 @@ const client = new WebClient(SLACK_TOKEN);
 
 
 // In both server.js and sendSlackMessageUtils.js
-const { messageStore } = require('./storage');  // Instead of './cache'
+const { messageStore } = require('./utils/storage');  // Instead of './cache'
 
 // Start server
 const port = 3000;
