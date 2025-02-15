@@ -3,10 +3,122 @@ const { formatRootMessage } = require("./formatSlackMessageUtils");
 const {
   convertMarkdownToSlack,
   convertMarkdownLinksToSlackLinks,
+  splitMessageAtLineBreak,
 } = require("./commonUtils");
 const { logger } = require("./logger");
 const { SLACK } = require("./config");
 const { validateTeam, validateEmail } = require("./validators");
+// In both server.js and sendSlackMessageUtils.js
+const { messageStore } = require('./storage');  // Instead of './cache'
+
+
+const formatLongText = (text, prefix = '') => {
+  const BLOCK_LIMIT = 2900; // Leave some room for formatting
+  
+  if (!text || text.length <= BLOCK_LIMIT) {
+      return [{
+          type: "section",
+          text: {
+              type: "mrkdwn",
+              text: `${prefix}>>>${text}`
+          }
+      }];
+  }
+
+  // Split into chunks
+  const blocks = [];
+  let remainingText = text;
+  let isFirst = true;
+
+  while (remainingText.length > 0) {
+      const chunk = remainingText.substring(0, BLOCK_LIMIT);
+      remainingText = remainingText.substring(BLOCK_LIMIT);
+
+      blocks.push({
+          type: "section",
+          text: {
+              type: "mrkdwn",
+              text: isFirst ? 
+                    `<${chunk}>` : // First chunk with prefix and expandable
+                  chunk // Subsequent chunks
+          }
+      });
+      isFirst = false;
+  }
+
+  return blocks;
+};
+
+const chunkText = (text, limit = 2900) => {
+  if (!text) return [];
+  if (text.length <= limit) return [text];
+
+  logger.debug('Starting text chunking', {
+      originalLength: text.length,
+      hasNewlines: text.includes('\n'),
+      limit
+  });
+
+  const chunks = [];
+  let currentChunk = '';
+
+  // First try to split by newlines
+  const lines = text.split('\n');
+
+  // If there's only one line, split by words
+  if (lines.length === 1) {
+      logger.debug('No newlines found, splitting by words');
+      const words = text.split(' ');
+      
+      for (const word of words) {
+          const potentialChunk = currentChunk ? currentChunk + ' ' + word : word;
+          
+          if (potentialChunk.length > limit) {
+              if (currentChunk) {
+                  chunks.push(currentChunk);
+                  currentChunk = word;
+              } else {
+                  // If a single word is too long, split it
+                  chunks.push(word.substring(0, limit));
+                  currentChunk = word.substring(limit);
+              }
+          } else {
+              currentChunk = potentialChunk;
+          }
+      }
+  } else {
+      // Process line by line
+      for (const line of lines) {
+          const potentialChunk = currentChunk ? currentChunk + '\n' + line : line;
+          
+          if (potentialChunk.length > limit) {
+              if (currentChunk) {
+                  chunks.push(currentChunk);
+                  currentChunk = line;
+              } else {
+                  // If a single line is too long, split it by words
+                  const lineChunks = chunkText(line, limit);  // Recursive call for long lines
+                  chunks.push(...lineChunks);
+                  currentChunk = '';
+              }
+          } else {
+              currentChunk = potentialChunk;
+          }
+      }
+  }
+
+  if (currentChunk) {
+      chunks.push(currentChunk);
+  }
+
+  logger.debug('Text chunking complete', {
+      inputLength: text.length,
+      chunks: chunks.length,
+      chunkSizes: chunks.map(c => c.length)
+  });
+
+  return chunks;
+};
 
 async function testSendAsRootMessage(team, email, sentiment, client) {
   logger.info("[EmailOrchestrator] Starting Slack message processing...");
@@ -78,7 +190,31 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
       }
     };
 
-    logger.debug('Message metadata created:', metadata);
+    const messageId = email._id?.$oid || 
+                         email._id?.toString() || 
+                         Date.now().toString();
+
+
+    logger.debug('Storing message content', {
+        messageId,
+        originalTextLength: originalText?.length,
+        quotedTextCount: quotedText?.length
+    });
+
+    // Store in cache
+    messageStore.set(messageId, {
+        originalText,
+        quotedText
+    });
+
+    // Verify storage
+    const storedContent = messageStore.get(messageId);
+    logger.debug('Verified message storage', {
+        messageId,
+        wasStored: !!storedContent,
+        cacheSize: messageStore.size()
+    });
+
 
     // Create the Slack payload with proper block structure
     const slackPayload = {
@@ -120,14 +256,39 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
             }
           ]
         },
-        // Latest Reply Section
+        // First, add the header
         {
           type: "section",
           text: {
               type: "mrkdwn",
-              text: "*Latest Reply:*\n" + originalText  // originalText is already a string
+              text: "*Latest Reply:*"
           }
-        },
+      },
+      {
+          type: "section",
+          text: {
+              type: "mrkdwn",
+              text: originalText.substring(0, 1000)
+          }
+      },
+      ...(originalText.length > 1000 ? [{
+          type: "actions",
+          elements: [{
+              type: "button",
+              text: {
+                  type: "plain_text",
+                  text: `Show More (${Math.ceil(originalText.length / 1000)} parts)`,
+                  emoji: true
+              },
+              value: JSON.stringify({
+                  type: 'latest_reply',
+                  messageId: messageId,
+                  currentChunk: 1,
+                  totalChunks: Math.ceil(originalText.length / 1000)
+              }),
+              action_id: "show_more_content"
+          }]
+      }] : []),
         {
           type: "divider"
         },
@@ -146,25 +307,42 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
         },
         // Previous Messages Section
         ...(quotedText.length > 0 ? [
-          {
-              type: "section",
-              text: {
-                  type: "mrkdwn",
-                  text: "*Previous Messages:*"
-              }
-          },
-          {
-              type: "section",
-              text: {
-                  type: "mrkdwn",
-                  text: quotedText.map(quote => (
-                    `> *From:* ${quote.author}\n` +
-                    `> *Date:* ${quote.date}\n` +
-                    `> ${quote.content.split('>').join('\n>')}`  // Add '>' to each line
-                )).join('\n')
-              }
-          }
-      ] : [])
+            {
+                type: "section",
+                text: {
+                    type: "mrkdwn",
+                    text: "*Previous Messages:*"
+                }
+            },
+            ...quotedText.map((quote, index) => [
+                {
+                    type: "section",
+                    text: {
+                        type: "mrkdwn",
+                        text: `*From:* ${quote.author}\n*Date:* ${quote.date}\n${quote.content.substring(0, 1000).split('>').join("\n> ")}`
+                    }
+                },
+                ...(quote.content.length > 1000 ? [{
+                    type: "actions",
+                    elements: [{
+                        type: "button",
+                        text: {
+                            type: "plain_text",
+                            text: `Show More (${Math.ceil(quote.content.length / 1000)} parts)`,
+                            emoji: true
+                        },
+                        value: JSON.stringify({
+                            type: 'quoted_reply',
+                            messageId: messageId,
+                            quoteIndex: index,
+                            currentChunk: 1,
+                            totalChunks: Math.ceil(quote.content.length / 1000)
+                        }),
+                        action_id: "show_more_content"
+                    }]
+                }] : [])
+            ]).flat()
+        ] : [])
       ],
       metadata: metadata,
       ...(email.slackReference?.threadTs && {
@@ -205,6 +383,11 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
     logger.info('[EmailOrchestrator] Message sent successfully', {
       messageTs: response.ts
     });
+
+    // Store for 24 hours then delete
+    setTimeout(() => {
+      messageStore.delete(email._id);
+  }, 24 * 60 * 60 * 1000);
 
     return {
       messageTs: response.ts,
