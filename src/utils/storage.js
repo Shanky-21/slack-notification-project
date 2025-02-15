@@ -1,7 +1,7 @@
 // storage.js
 const fs = require('fs');
 const path = require('path');
-const { logger } = require('./logger');
+const { logger } = require('../middleware/logger');
 
 const STORAGE_FILE = path.join(__dirname, 'message-store.json');
 

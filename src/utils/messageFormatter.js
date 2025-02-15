@@ -1,6 +1,6 @@
 // messageFormatter.js
 const { SLACK } = require('./config');
-const { logger } = require('./logger');
+const { logger } = require('../middleware/logger');
 
 function createHeaderBlock(messageText, sentiment) {
     return [
