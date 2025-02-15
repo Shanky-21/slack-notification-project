@@ -1,5 +1,5 @@
 // validators.js
-const { logger } = require('../logger');
+const { logger } = require('../middleware/logger'); // Updated path to logger
 const { VALIDATION } = require('../config/config');
 
 /**

@@ -1,7 +1,7 @@
 require('dotenv').config();
-const { testSendAsRootMessage } = require('./sendSlackMessageUtils');
+const { testSendAsRootMessage } = require('./services/sendSlackMessageUtils');
 const { WebClient } = require('@slack/web-api');
-const { logger } = require("./middleware/logger");
+const { logger } = require("../src/middleware/logger"); // Updated path
 console.log("Bot Token:", process.env.SLACK_BOT_TOKEN ? "Token exists" : "No token found");
 // Initialize Slack client
 const client = new WebClient(process.env.SLACK_BOT_TOKEN);

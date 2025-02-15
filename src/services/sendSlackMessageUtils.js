@@ -1,15 +1,15 @@
 const { WebClient } = require("@slack/web-api");
-const { formatRootMessage } = require("./utils/formatSlackMessageUtils");
+const { formatRootMessage } = require("../utils/formatSlackMessageUtils");
 const {
   convertMarkdownToSlack,
   convertMarkdownLinksToSlackLinks,
   splitMessageAtLineBreak,
-} = require("./utils/commonUtils");
-const { logger } = require("./logger");
-const { SLACK } = require("./config/config");
-const { validateTeam, validateEmail } = require("./utils/validators");
+} = require("../utils/commonUtils");
+const { logger } = require("../middleware/logger");
+const { SLACK } = require("../config/config");
+const { validateTeam, validateEmail } = require("../utils/validators");
 // In both server.js and sendSlackMessageUtils.js
-const { messageStore } = require('./utils/storage');  // Instead of './cache'
+const { messageStore } = require('../utils/storage');  // Instead of './cache'
 
 
 const formatLongText = (text, prefix = '') => {
