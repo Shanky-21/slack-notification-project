@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const { App } = require('@slack/bolt');
-const { logger } = require('./middleware/logger');
+const { logger } = require('./src/middleware/logger');
 const { WebClient } = require('@slack/web-api');
 
 const expressApp = express();
@@ -21,7 +21,7 @@ const client = new WebClient(SLACK_TOKEN);
 
 
 // In both server.js and sendSlackMessageUtils.js
-const { messageStore } = require('./utils/storage');  // Instead of './cache'
+const { messageStore } = require('./src/utils/storage');  // Instead of './cache'
 
 // Start server
 const port = 3000;
