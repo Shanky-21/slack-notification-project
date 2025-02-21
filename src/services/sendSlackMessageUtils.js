@@ -10,7 +10,7 @@ const { SLACK } = require("../config/config");
 const { validateTeam, validateEmail } = require("../utils/validators");
 // In both server.js and sendSlackMessageUtils.js
 const { messageStore } = require('../utils/storage');  // Instead of './cache'
-
+const messageQueue = require('./queue/messageQueue');
 
 const formatLongText = (text, prefix = '') => {
   const BLOCK_LIMIT = 2900; // Leave some room for formatting
@@ -377,10 +377,17 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
       hasThread: !!slackPayload.thread_ts
     });
 
+    logger.debug("just before sending the notification")
+
+    setTimeout(() => {
+      logger.debug("just before sending the notification 2")
+    }, 1000)
+
+
     // Send the message
     const response = await client.chat.postMessage(slackPayload);
 
-    logger.info('[EmailOrchestrator] Message sent successfully', {
+    logger.info('[EmailOrchestrator] Message sent successfully to slack', {
       messageTs: response.ts
     });
 
@@ -404,6 +411,22 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
   }
 }
 
+async function queueSlackMessage(team, email, sentiment, client) {
+  try {
+      return await messageQueue.addToQueue(team, email, sentiment, client);
+  } catch (error) {
+      logger.error('Failed to queue message', error);
+      throw error;
+  }
+}
+
+// Add a function to check queue status if needed
+function getQueueStatus() {
+  return messageQueue.getQueueStatus();
+}
+
 module.exports = {
   testSendAsRootMessage,
+  queueSlackMessage,
+  getQueueStatus
 };

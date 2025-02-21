@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { testSendAsRootMessage } = require('./src/services/sendSlackMessageUtils');
+const { testSendAsRootMessage, queueSlackMessage, getQueueStatus } = require('./src/services/sendSlackMessageUtils');
 const { WebClient } = require('@slack/web-api');
 const { logger } = require("./src/middleware/logger"); // Updated path
 console.log("Bot Token:", process.env.SLACK_BOT_TOKEN ? "Token exists" : "No token found");
@@ -176,12 +176,17 @@ const testSendEmailToSlack = async () => {
         }
 
 
-      const result = await testSendAsRootMessage(team, email, sentiment, client)
+        const queueResult = await queueSlackMessage(team, email, sentiment, client);
+        console.log('Message queued:', queueResult);
 
-      logger.info('Message sent successfully', {
-        messageTimestamp: result.messageTs,
-        metadata: result.metadata
-      });
+        // Optionally check queue status
+        const status = getQueueStatus();
+        console.log('Queue status:', status);
+
+        logger.info('Message sent successfully', {
+          messageTimestamp: queueResult.messageTs,
+          metadata: queueResult.metadata
+        });
 
       process.exit(0);
   } catch (error) {
