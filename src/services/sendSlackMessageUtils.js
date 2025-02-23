@@ -166,6 +166,8 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
     logger.info("[EmailOrchestrator] Step 2: Formatting message text");
     const { originalText, quotedText   } = formatRootMessage(email, sentiment);
 
+    console.log("debug original text: ", originalText, " quoted text: ", quotedText);
+
     logger.debug("[EmailOrchestrator] Formatted message", { 
         hasOriginalText: !!originalText,
         quotedTextCount: quotedText.length
@@ -230,32 +232,32 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
           }
         },
         // Email Details in a clean format
-        {
-          type: "section",
-          fields: [
-            {
-              type: "mrkdwn",
-              text: `*From:*\n${email.from.name} ${email.from.address}`  // Added email address
-            },
-            {
-              type: "mrkdwn",
-              text: `*To:*\n${email.to[0].address}`
-            }
-          ]
-        },
-        {
-          type: "section",
-          fields: [
-            {
-              type: "mrkdwn",
-              text: `*Subject:*\n${email.subject}`
-            },
-            {
-              type: "mrkdwn",
-              text: `*Date:*\n${new Date(email.createdAt.$date).toLocaleString()}`
-            }
-          ]
-        },
+        // {
+        //   type: "section",
+        //   fields: [
+        //     {
+        //       type: "mrkdwn",
+        //       text: `*From:*\n${email.from.name} ${email.from.address}`  // Added email address
+        //     },
+        //     {
+        //       type: "mrkdwn",
+        //       text: `*To:*\n${email.to[0].address}`
+        //     }
+        //   ]
+        // },
+        // {
+        //   type: "section",
+        //   fields: [
+        //     {
+        //       type: "mrkdwn",
+        //       text: `*Subject:*\n${email.subject}`
+        //     },
+        //     {
+        //       type: "mrkdwn",
+        //       text: `*Date:*\n${new Date(email.createdAt.$date).toLocaleString()}`
+        //     }
+        //   ]
+        // },
         // First, add the header
         {
           type: "section",
@@ -268,23 +270,23 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
           type: "section",
           text: {
               type: "mrkdwn",
-              text: originalText.substring(0, 2900)
+              text: originalText.substring(0, 2000)
           }
       },
-      ...(originalText.length > 2900 ? [{
+      ...(originalText.length > 2000 ? [{
           type: "actions",
           elements: [{
               type: "button",
               text: {
                   type: "plain_text",
-                  text: `Show More (${Math.ceil(originalText.length / 2900)} parts)`,
+                  text: `Show More (${Math.ceil(originalText.length / 2000)} parts)`,
                   emoji: true
               },
               value: JSON.stringify({
                   type: 'latest_reply',
                   messageId: messageId,
                   currentChunk: 1,
-                  totalChunks: Math.ceil(originalText.length / 2900)
+                  totalChunks: Math.ceil(originalText.length / 2000)
               }),
               action_id: "show_more_content"
           }]
@@ -303,16 +305,16 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
                     type: "section",
                     text: {
                         type: "mrkdwn",
-                        text: `${quote.substring(0, 2900).split('>').join("\n> ")}`
+                        text: `${quote.substring(0, 2000).split('>').join("\n> ")}`
                     }
                 },
-                ...(quote.length > 2900 ? [{
+                ...(quote.length > 2000 ? [{
                     type: "actions",
                     elements: [{
                         type: "button",
                         text: {
                             type: "plain_text",
-                            text: `Show More (${Math.ceil(quote.length / 2900)} parts)`,
+                            text: `Show More (${Math.ceil(quote.length / 2000)} parts)`,
                             emoji: true
                         },
                         value: JSON.stringify({
@@ -320,7 +322,7 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
                             messageId: messageId,
                             quoteIndex: index,
                             currentChunk: 1,
-                            totalChunks: Math.ceil(quote.length / 2900)
+                            totalChunks: Math.ceil(quote.length / 2000)
                         }),
                         action_id: "show_more_content"
                     }]
