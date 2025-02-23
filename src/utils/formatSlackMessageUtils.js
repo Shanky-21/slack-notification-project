@@ -161,52 +161,67 @@ const textFormatters = {
 
 // Message processing functions
 const messageProcessors = {
+
     extractEmailContent(emailText) {
+
+        console.log("debug emailText         : ", emailText);
+
         // Normalize line endings
         emailText = emailText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
+        //  emailText = emailText.trim().replace(/\r?\n(?!\r?\n)/g, ' ');
+ 
         // Remove specific CSS styles from the email text
         const specificCssStylesRegex = /{[\s\S]*?margin: 0 !important;[\s\S]*?}@media[\s\S]*?{[\s\S]*?}/g;
         emailText = emailText.replace(specificCssStylesRegex, '');
-
+ 
+ 
         // Remove inline CSS styles
         const inlineCssRegex = /<style[\s\S]*?>[\s\S]*?<\/style>/gi;
         emailText = emailText.replace(inlineCssRegex, '');
-
+ 
+ 
         // Split the email text into lines
         const lines = emailText.split('\n');
-
+ 
+ 
         // Initialize variables
         const messages = [];
         let currentMessage = {
             content: '',
             level: 0,
         };
-
+ 
+ 
         // Regular expressions to identify email headers, spam analysis, and separators
         const headerRegex = /^[A-Z][\w-]*: .*$/;
         const spamAnalysisRegex = /^Content-(Type|Transfer-Encoding|Disposition): .*$/i;
         const separatorRegex = /^(-{2,}|_{2,}|\*{2,})$/;
-
+ 
+ 
         // Iterate over each line
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i].trim();
-
+ 
+ 
             // Skip empty lines
             if (line === '') {
                 continue;
             }
-
+ 
+ 
             // Check if line is a header or spam analysis
             if (headerRegex.test(line) || spamAnalysisRegex.test(line)) {
                 continue; // Skip headers
             }
-
+ 
+ 
             // Check for separator lines
             if (separatorRegex.test(line)) {
                 continue; // Skip separators
             }
-
+ 
+ 
             // Append the line to the current message content
             if (currentMessage.content) {
                 currentMessage.content += '\n' + line;
@@ -214,208 +229,161 @@ const messageProcessors = {
                 currentMessage.content = line;
             }
         }
-
+ 
+ 
         // Add the message to the messages array
         if (currentMessage.content) {
             messages.push(currentMessage);
         }
-
+ 
+ 
         return messages;
     },
+ 
+    
 
-processMessages(messages) {
+    extractLatestReply(quotedText) {
+        // Check if there's a reply header in the text
+        if (emailPatterns.isReplyHeader(quotedText)) {
+            const matchedText = [
+                emailPatterns.replyHeaders.standard,
+                emailPatterns.replyHeaders.complex
+            ].reduce((match, pattern) => match || quotedText.match(pattern), null);
+    
+            if (matchedText) {
+                // Split by the matched header
+                const parts = quotedText.split(matchedText);
+                
+                // The latest reply will be: header + content until next header (if any)
+                let latestReply = matchedText[0] + "\n";  // Start with the header
+                
+                if (parts[1]) {
+                    // Check if there's another reply header in the remaining text
+                    const nextReplyHeader = [
+                        emailPatterns.replyHeaders.standard,
+                        emailPatterns.replyHeaders.complex
+                    ].reduce((match, pattern) => match || parts[1].match(pattern), null);
+    
+                    if (nextReplyHeader) {
+                        // If there's another header, only take content up to it
+                        const nextParts = parts[1].split(nextReplyHeader);
+                        latestReply += nextParts[0];
+                    } else {
+                        // If no more headers, take all remaining content
+                        latestReply += parts[1];
+                    }
+                }
+                
+                return latestReply.trim();
+            }
+        }
+        
+        // If no reply header found, return the original text
+        return quotedText;
+    },
 
-    logger.debug("processMessages entry", {
-        messageCount: messages.length
-    });
-    let stopAddingText = false;
-    let originalText = [];
-    let quotedText = [];
-    let originalTextIsFound = false;
-    let footerDetected = false;
-    let replyHeaderCount = 0;
 
-    logger.debug('Starting to process messages', {
-        messageCount: messages.length
-    });
-
-    for (let msg of messages) {
-        const lines = textFormatters.escapeMarkdown(msg.content.trim()).split('\n');
-
-        logger.debug('Processing message', {
-            lineCount: lines.length,
-            firstLine: lines[0],
-            originalText: originalText,
-            quotedText:  quotedText
-        });
-
+    handleQuotedPart(email) {
+        // First extract the latest reply
+        const latestReply = this.extractLatestReply(email);
+        
+        // Then process the chevrons in the latest reply
+        const lines = latestReply.split('\n');
+        const processedLines = [];
+    
         for (let line of lines) {
-            logger.debug('Processing line shashank', {
-                line: line,
-                quotedText: quotedText,
-                originalText: originalText
-            })
-
-            logger.debug('Processing line', {
-                line,
-                currentState: {
-                    stopAddingText,
-                    footerDetected,
-                    replyHeaderCount,
-                    originalTextIsFound
-                }
-            });
-
-            if (footerDetected || replyHeaderCount >= 2) {
-                logger.debug('Stopping processing - Footer detected or max reply headers reached', {
-                    footerDetected,
-                    replyHeaderCount
-                });
-                break;
-            }
-
-            if (footerRegexPatterns.some(pattern => pattern.test(line.trim()))) {
-                logger.debug('Footer pattern detected', {
-                    line
-                });
-                footerDetected = true;
-                break;
-            }
-
             let chevronCount = (line.match(/^>+/) || [''])[0].length;
-
-            if (!stopAddingText) {
-                line = line.replace(/^>+(\s*>+)?/, '').trim();
-            }
-
-            // When we detect a reply header
-            if (emailPatterns.isReplyHeader(line)) {
-                logger.debug('Reply header detected', {
-                    line,
-                    replyHeaderCount
-                });
-                replyHeaderCount++;
-                if (replyHeaderCount === 2) {
-                    stopAddingText = true;
-                    break;
-                }
             
+            if (chevronCount > 0) {
+                // Remove all chevrons and any whitespace after them
+                console.log("line: ", line);
+                line = line.replace(/^>+(\s*>+)?/, '').trim();
+
+                if (emailPatterns.headers.dash.test(line)) {
+                    continue;
+                }
+                
+                // Add back single chevron if line isn't empty
+                if (line) {
+                    processedLines.push(`> ${line}`);
+                }
+            } else {
+                // If no chevrons, just add the line as is
+                if (line.trim()) {
+                    processedLines.push(line);
+                }
+            }
+        }
+    
+        return processedLines.join('\n');
+    },
+    
+    handleOriginalPart(email) {
+            /*
+            0. iterate line by line,
+            1. it footer is encountered remove it.
+        */
+
+        const lines = email.split('\n');
+        const processedLines = [];
+        let footerDetected = false;
+    
+        for (let line of lines) {
+            // Check for footer
+            if (footerRegexPatterns.some(pattern => pattern.test(line.trim()))) {
+                footerDetected = true;
+                break;  // Stop processing once footer is found
+            }
+    
+            // If no footer detected yet, add the line
+            if (!footerDetected && line.trim()) {
+                processedLines.push(line);
+            }
+        }
+    
+        return processedLines.join('\n');
+    }
+    ,
+
+
+    processMessages(messages) {
+        let originalText = '';
+        let quotedText = [];
+    
+        messages.forEach(msg => {
+            // Normalize content first
+            const normalizedContent = msg.content.trim().replace(/\r?\n(?!\r?\n)/g, ' ');
+            
+            // Check for reply header
+            if (emailPatterns.isReplyHeader(normalizedContent)) {
                 const matchedText = [
                     emailPatterns.replyHeaders.standard,
                     emailPatterns.replyHeaders.complex
-                ].reduce((match, pattern) => match || line.match(pattern), null);
-            
-                const splitLine = line.split(matchedText);
-                
-                // Clean the header (remove HTML entities)
-                const cleanedHeader = matchedText[0]
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&amp;/g, '&');
-            
-                // Clean the quoted content
-                const quotedContent = splitLine[1]?.split('----')[0] || '';
-                const cleanedQuote = quotedContent
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&amp;/g, '&')
-                    .replace(/^>+/gm, '') // Remove '>' characters
-                    .split('\n')
-                    .map(line => line.trim())
-                    .filter(line => line)
-                    .join(' ')
-                    .trim();
-            
-                logger.debug('Processing quote', {
-                    originalHeader: matchedText[0],
-                    cleanedHeader,
-                    originalQuote: quotedContent,
-                    cleanedQuote
-                });
-            
-                originalText.push(splitLine[0] || '');
-                quotedText.push(`${cleanedHeader}\n${cleanedQuote}\n`);
-            
-                originalTextIsFound = true;
-                break;
-            }
-
-            if (emailPatterns.headers.dash.test(line)) {
-                logger.debug('Separator dash detected', {
-                    line
-                });
-                stopAddingText = true;
-                if (replyHeaderCount < 2) {
-                    originalText.push(line.trim());
+                ].reduce((match, pattern) => match || normalizedContent.match(pattern), null);
+    
+                if (matchedText) {
+                    const parts = normalizedContent.split(matchedText);
+                    
+                    // Handle original part (before reply header)
+                    originalText = this.handleOriginalPart(parts[0]);
+    
+                    // Handle quoted part (reply header and everything after)
+                    if (parts[1]) {
+                        const quotedPart = matchedText[0] + parts[1];
+                        quotedText.push(this.handleQuotedPart(quotedPart));
+                    }
                 }
-                break;
+            } else {
+                // If no reply header, treat everything as original text
+                originalText = this.handleOriginalPart(normalizedContent);
             }
-
-            if (line.startsWith('>')) {
-                logger.debug('Quoted text line detected', {
-                    line
-                });
-                quotedText.push(line.replace(/^>\s*/, ''));
-                break;
-            }
-
-            if (chevronCount > 0 && originalTextIsFound) {
-                logger.debug('Nested quoted text detected', {
-                    line,
-                    chevronCount
-                });
-                quotedText.push(line.replace(/^>\s*/, ''));
-                break;
-            }
-
-            if (replyHeaderCount < 2) {
-                logger.debug('Adding to original text', {
-                    line
-                });
-                originalText.push(line);
-            }
-
-        }
-
-        if (footerDetected || replyHeaderCount >= 2) {
-            logger.debug('Stopping message processing', {
-                footerDetected,
-                replyHeaderCount
-            });
-            break;
-        }
-    }
-
-    logger.debug('Final processing result before formatting', {
-        originalTextLength: originalText.length,
-        quotedTextLength: quotedText.length,
-        originalText: originalText,
-        quotedText: quotedText
-    });
-
-    // Parse the quoted text to extract author and date
-    const formattedQuotedText = quotedText.map(quote => {
-        const headerMatch = quote.match(/On (.+?) at (.+?) <(.+?)> wrote:/);
-        if (headerMatch) {
-            return {
-                author: headerMatch[3],
-                date: `${headerMatch[1]} at ${headerMatch[2]}`,
-                content: quote.split('\n')[1] // Get the content part after the header
-            };
-        }
-        return null;
-    }).filter(Boolean);
-
-    logger.debug('Formatted output', {
-        originalText: originalText.join(' ').trim(),
-        quotedText: formattedQuotedText
-    });
-
-    return {
-        originalText: originalText.join(' ').trim(),
-        quotedText: formattedQuotedText
-    };
-},
+        });
+    
+        return {
+            originalText,
+            quotedText
+        };
+    },
 
    combineOriginalAndQuotedText(originalText, quotedText) {
        const combinedMessage = `\n${originalText.join("\n").trim()}${textFormatters.prefixedFinalMessage(quotedText.map(line => line.replace(/>/g, "\n>")).join("> "))}`;
