@@ -253,9 +253,11 @@ const messageProcessors = {
             if (matchedText) {
                 // Split by the matched header
                 const parts = quotedText.split(matchedText);
+
+                console.log("debug matchedText : ", matchedText[0], matchedText[0].trim().replace(/\r?\n(?!\r?\n)/g, ' '));
                 
                 // The latest reply will be: header + content until next header (if any)
-                let latestReply = matchedText[0] + "\n";  // Start with the header
+                let latestReply = matchedText[0].trim().replace(/\r?\n(?!\r?\n)/g, ' '); + "\n";  // Start with the header
                 
                 if (parts[1]) {
                     // Check if there's another reply header in the remaining text
@@ -281,6 +283,28 @@ const messageProcessors = {
         // If no reply header found, return the original text
         return quotedText;
     },
+
+     convertPlainTextToMarkdown(text) {
+        // Convert URLs to Markdown links
+        text = text.replace(/(https?:\/\/[^\s]+)/g, '[$1]($1)');
+      
+        // Ensure paragraphs are separated by two newlines
+        text = text.replace(/([^\n])\n([^\n])/g, '$1\n\n$2');
+      
+        // Convert lines starting with numbers to ordered lists
+        text = text.replace(/^\d+\.\s+/gm, (match) => match.trim() + ' ');
+      
+        // Convert lines starting with dashes or asterisks to unordered lists
+        text = text.replace(/^[-*]\s+/gm, (match) => match.trim() + ' ');
+      
+        // Add two spaces at the end of lines for line breaks in Markdown
+        text = text.replace(/([^\n])\n/g, '$1  \n');
+
+        console.log("debug text: ", text, [text]);
+      
+        return text;
+      },
+      
 
 
     handleQuotedPart(email) {
@@ -341,7 +365,7 @@ const messageProcessors = {
             }
         }
     
-        return processedLines.join('\n');
+        return this.convertPlainTextToMarkdown(processedLines.join('\n'));
     }
     ,
 
@@ -351,8 +375,11 @@ const messageProcessors = {
         let quotedText = [];
     
         messages.forEach(msg => {
+            console.log("debug message content : ", msg);
             // Normalize content first
-            const normalizedContent = msg.content.trim().replace(/\r?\n(?!\r?\n)/g, ' ');
+            const normalizedContent = msg.content.trim().replace(/\r?\n(?!\r?\n)/g, '\n');
+
+            console.log("debug normalized content : ", [normalizedContent]);
             
             // Check for reply header
             if (emailPatterns.isReplyHeader(normalizedContent)) {
@@ -363,9 +390,13 @@ const messageProcessors = {
     
                 if (matchedText) {
                     const parts = normalizedContent.split(matchedText);
+
+                    // console.log("debug normalized content : ", parts[0]);
                     
                     // Handle original part (before reply header)
                     originalText = this.handleOriginalPart(parts[0]);
+                    
+                    // console.log("debug intermediate orginal_text: ", originalText);
     
                     // Handle quoted part (reply header and everything after)
                     if (parts[1]) {
@@ -386,7 +417,7 @@ const messageProcessors = {
     },
 
    combineOriginalAndQuotedText(originalText, quotedText) {
-       const combinedMessage = `\n${originalText.join("\n").trim()}${textFormatters.prefixedFinalMessage(quotedText.map(line => line.replace(/>/g, "\n>")).join("> "))}`;
+       const combinedMessage = `\n${originalText.trim()}${textFormatters.prefixedFinalMessage(quotedText.map(line => line.replace(/>/g, "\n>")).join("> "))}`;
        return textFormatters.removeDoubleChevron(combinedMessage.trim());
    },
 
@@ -461,7 +492,7 @@ const messageFormatters = {
     //     };
     // },
 
-    formatRootMessage(email, sentiment) {
+    formatRootMessage2(email, sentiment) {
         const messages = messageProcessors.extractEmailContent(email.text);
         const { originalText, quotedText } = messageProcessors.processMessages(messages);
 
@@ -474,7 +505,28 @@ const messageFormatters = {
             originalText,
             quotedText
         };
-    }
+    },
+
+    formatRootMessage(email, sentiment) {
+        const headerMessage = messageFormatters.constructHeaderMessage(email, sentiment);
+        const messages = messageProcessors.extractEmailContent(email.text);
+        const { originalText, quotedText } = messageProcessors.processMessages(messages);
+
+        // console.log("debug original message : \n ", originalText);
+ 
+ 
+        let message = messageProcessors.combineOriginalAndQuotedText(originalText, quotedText);
+        const finalMessage = messageProcessors.cleanAndFormatFinalMessage(message);
+        const finalMessageWithHeader = `${headerMessage}\n${textFormatters.cleanMarkdownSpecialCharacters(finalMessage)}`;
+
+        // console.log("final message with Header :", finalMessageWithHeader);
+        return {
+            finalMessageWithHeader,
+            originalText,
+            quotedText,
+            headerMessage
+        };
+    } 
     
 
 

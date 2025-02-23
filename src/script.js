@@ -6,7 +6,7 @@ console.log("Bot Token:", process.env.SLACK_BOT_TOKEN ? "Token exists" : "No tok
 // Initialize Slack client
 const client = new WebClient(process.env.SLACK_BOT_TOKEN);
 
-const longLatestReply = `I hope this email finds you well. I wanted to provide a comprehensive update on our recent project developments and address several key points that have emerged during our last few meetings.
+const longLatestReply = `I hope this email finds you well. https://www.example.com I wanted to provide a comprehensive update on our recent project developments and address several key points that have emerged during our last few meetings.
 
 First and foremost, I'm pleased to report that we've made significant progress on the core functionalities we discussed. The team has successfully implemented the new authentication system, which now includes multi-factor authentication and improved session management. Our initial testing shows a 40% reduction in unauthorized access attempts, while maintaining a smooth user experience for legitimate users.
 
