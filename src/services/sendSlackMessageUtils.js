@@ -268,43 +268,27 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
           type: "section",
           text: {
               type: "mrkdwn",
-              text: originalText.substring(0, 1000)
+              text: originalText.substring(0, 2900)
           }
       },
-      ...(originalText.length > 1000 ? [{
+      ...(originalText.length > 2900 ? [{
           type: "actions",
           elements: [{
               type: "button",
               text: {
                   type: "plain_text",
-                  text: `Show More (${Math.ceil(originalText.length / 1000)} parts)`,
+                  text: `Show More (${Math.ceil(originalText.length / 2900)} parts)`,
                   emoji: true
               },
               value: JSON.stringify({
                   type: 'latest_reply',
                   messageId: messageId,
                   currentChunk: 1,
-                  totalChunks: Math.ceil(originalText.length / 1000)
+                  totalChunks: Math.ceil(originalText.length / 2900)
               }),
               action_id: "show_more_content"
           }]
       }] : []),
-        {
-          type: "divider"
-        },
-        // Thread Context after Latest Reply
-        {
-          type: "context",
-          elements: [
-            {
-              type: "mrkdwn",
-              text: `📎 Thread Context: Previous messages in thread ${email.slackReference?.threadTs}`
-            }
-          ]
-        },
-        {
-          type: "divider"
-        },
         // Previous Messages Section
         ...(quotedText.length > 0 ? [
             {
@@ -319,16 +303,16 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
                     type: "section",
                     text: {
                         type: "mrkdwn",
-                        text: `*From:* ${quote.author}\n*Date:* ${quote.date}\n${quote.content.substring(0, 1000).split('>').join("\n> ")}`
+                        text: `${quote.substring(0, 2900).split('>').join("\n> ")}`
                     }
                 },
-                ...(quote.content.length > 1000 ? [{
+                ...(quote.length > 2900 ? [{
                     type: "actions",
                     elements: [{
                         type: "button",
                         text: {
                             type: "plain_text",
-                            text: `Show More (${Math.ceil(quote.content.length / 1000)} parts)`,
+                            text: `Show More (${Math.ceil(quote.length / 2900)} parts)`,
                             emoji: true
                         },
                         value: JSON.stringify({
@@ -336,7 +320,7 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
                             messageId: messageId,
                             quoteIndex: index,
                             currentChunk: 1,
-                            totalChunks: Math.ceil(quote.content.length / 1000)
+                            totalChunks: Math.ceil(quote.length / 2900)
                         }),
                         action_id: "show_more_content"
                     }]
