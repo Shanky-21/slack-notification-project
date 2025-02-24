@@ -164,7 +164,7 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
 
     // Format the message
     logger.info("[EmailOrchestrator] Step 2: Formatting message text");
-    const { originalText, quotedText   } = formatRootMessage(email, sentiment);
+    const { originalText, quotedText, headerMessage   } = formatRootMessage(email, sentiment);
 
     console.log("debug original text: ", originalText, " quoted text: ", quotedText);
 
@@ -228,37 +228,48 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
           type: "section",
           text: {
               type: "mrkdwn",
-              text: `*New ${sentiment} Reply*`
+              text: `:mailbox_with_mail:  *New ${sentiment} Reply*`
           }
         },
+
+        // {
+        //   type: "section",
+        //   fields: [
+        //     {
+        //       type: "mrkdwn",
+        //       text: `${headerMessage}`
+        //     }
+        //   ]
+        // },
         // Email Details in a clean format
-        // {
-        //   type: "section",
-        //   fields: [
-        //     {
-        //       type: "mrkdwn",
-        //       text: `*From:*\n${email.from.name} ${email.from.address}`  // Added email address
-        //     },
-        //     {
-        //       type: "mrkdwn",
-        //       text: `*To:*\n${email.to[0].address}`
-        //     }
-        //   ]
-        // },
-        // {
-        //   type: "section",
-        //   fields: [
-        //     {
-        //       type: "mrkdwn",
-        //       text: `*Subject:*\n${email.subject}`
-        //     },
-        //     {
-        //       type: "mrkdwn",
-        //       text: `*Date:*\n${new Date(email.createdAt.$date).toLocaleString()}`
-        //     }
-        //   ]
-        // },
+        {
+          type: "section",
+          fields: [
+            {
+              type: "mrkdwn",
+              text: `*From:*\n${email.from.name} <mailto:${email.from.address}|${email.from.address}>`  // Added email address
+            },
+            {
+              type: "mrkdwn",
+              text: `*To:*\n${email.to[0].address}`
+            }
+          ]
+        },
+        {
+          type: "section",
+          fields: [
+            {
+              type: "mrkdwn",
+              text: `*Subject:*\n${email.subject}`
+            },
+            {
+              type: "mrkdwn",
+              text: `*Date:*\n${new Date(email.createdAt.$date).toLocaleString()}`
+            }
+          ]
+        },
         // First, add the header
+
         {
           type: "section",
           text: {
@@ -293,19 +304,19 @@ async function testSendAsRootMessage(team, email, sentiment, client) {
       }] : []),
         // Previous Messages Section
         ...(quotedText.length > 0 ? [
-            {
-                type: "section",
-                text: {
-                    type: "mrkdwn",
-                    text: "*Previous Messages:*"
-                }
-            },
+            // {
+            //     type: "section",
+            //     text: {
+            //         type: "mrkdwn",
+            //         text: ":outbox_tray: *Previous Messages:*"
+            //     }
+            // },
             ...quotedText.map((quote, index) => [
                 {
                     type: "section",
                     text: {
                         type: "mrkdwn",
-                        text: `${quote.substring(0, 2000).split('>').join("\n> ")}`
+                        text: `${quote.substring(0, 2000)}`
                     }
                 },
                 ...(quote.length > 2000 ? [{
