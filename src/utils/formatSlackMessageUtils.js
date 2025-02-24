@@ -1,6 +1,67 @@
 const dayjs = require("dayjs");
 const { logger } = require("../middleware/logger");  // Updated path to logger
 
+const TurndownService = require('turndown');
+const turndownService = new TurndownService();
+
+// Customize the conversion for Slack-specific needs
+turndownService.addRule('bold', {
+    filter: ['strong', 'b'],
+    replacement: function (content) {
+      return `*${content}*`; // Slack uses asterisks for bold
+    }
+  });
+  
+  turndownService.addRule('italic', {
+    filter: ['em', 'i'],
+    replacement: function (content) {
+      return `_${content}_`; // Slack uses underscores for italics
+    }
+  });
+
+  turndownService.addRule('link', {
+    filter: 'a',
+    replacement: function (content, node) {
+      const href = node.getAttribute('href');
+      if (node.innerHTML.trim().startsWith('<img') || content.trim().includes('http')) {
+        // Return only the link without the image text
+        return `<${href}>`;
+      }
+      return `<${href}|${content}>`;
+    }
+  });
+
+//   turndownService.addRule('convertGtEntity', {
+//     filter: function (node) {
+//       // Apply this rule to text nodes
+//       return node.nodeType === 3; // Node.TEXT_NODE
+//     },
+//     replacement: function (content) {
+//       // Replace &gt; with >
+//       return content.replace(/&gt;/g, '>');
+//     }
+//   });
+  
+turndownService.addRule('image', {
+    filter: 'img',
+    replacement: function (content, node) {
+      const src = node.getAttribute('src');
+      const alt = node.getAttribute('alt') || 'Image';
+      return `<${src}|${alt}>`;
+    }
+  });
+  // Custom rule for emails
+  turndownService.addRule('email', {
+    filter: function (node) {
+      return node.nodeName === 'A' && node.getAttribute('href').startsWith('mailto:');
+    },
+    replacement: function (content, node) {
+      const email = node.getAttribute('href').replace('mailto:', '');
+      console.log(`Processing email: ${email}`); // Debugging line
+      return `<<mailto:${email}|${email}>>`;
+    }
+  });
+
 
 // Regex patterns for reply headers
 const replyHeaderRegex = /On\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+.+?(?:at|,)\s+.*?\s+wrote:|On\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4},\s+.*?\s+<.*?>\s+wrote:|[A-Za-z]{3} \d{1,2}, \d{4}, (?:at)?\s*\d{1,2}:\d{2}(?:\s*[APap][Mm])?, .*? wrote:|\d{4}-\d{2}-\d{2} \d{2}:\d{2}, .*? wrote:/i;
@@ -26,7 +87,7 @@ const footerRegexPatterns = [
 
 
    // **Common Closing Phrases**
-   /^(?:Regards|Best Regards|Kind Regards|Sincerely|Thanks(?:,|\s+&)? Regards?|Cheers|Best|Best Wishes|With Appreciation|Yours Sincerely|Yours Truly|Warm Regards|Thanks and Regards|Respectfully),?/i,
+   /(?:Regards|Best Regards|Kind Regards|Sincerely|Thanks(?:,|\s+&)? Regards?|Cheers|Best|Best Wishes|With Appreciation|Yours Sincerely|Yours Truly|Warm Regards|Thanks and Regards|Respectfully),?/i,
 
 
    // **Mobile Email Signatures**
@@ -131,6 +192,8 @@ const textFormatters = {
        return text.replace(/\\\\([*_~`])/g, '$1');
    },
 
+   
+
 
    formatSlackLinksAndEmails(text) {
        text = text.replace(
@@ -162,6 +225,26 @@ const textFormatters = {
 // Message processing functions
 const messageProcessors = {
 
+     htmlToMarkdown(input) {
+        try {
+          // Check if input is undefined or null
+          if (input == null) {
+            throw new TypeError('Input is null or undefined');
+          }
+      
+          // Convert input to string if it's not already
+          const htmlContent = String(input);
+      
+          console.log('HTML Input:', htmlContent, [htmlContent]);
+          const markdownContent = turndownService.turndown(htmlContent);
+          console.log('Markdown Output:', markdownContent, [markdownContent]);
+          return markdownContent;
+        } catch (error) {
+          console.error('Error converting HTML to Markdown:', error);
+          return null;
+        }
+      },
+      
     extractEmailContent(emailText) {
 
         console.log("debug emailText         : ", emailText);
@@ -310,6 +393,8 @@ const messageProcessors = {
     handleQuotedPart(email) {
         // First extract the latest reply
         const latestReply = this.extractLatestReply(email);
+
+        console.log("debug", "latestReply: ", latestReply);
         
         // Then process the chevrons in the latest reply
         const lines = latestReply.split('\n');
@@ -339,8 +424,12 @@ const messageProcessors = {
             }
         }
     
-        return processedLines.join('\n');
+        const quo = processedLines.join('\n');
+
+        console.log("debug quote: ", quo);
+        return quo
     },
+    
     
     handleOriginalPart(email) {
             /*
@@ -354,7 +443,10 @@ const messageProcessors = {
     
         for (let line of lines) {
             // Check for footer
+            console.log("debug line : ", line);
+
             if (footerRegexPatterns.some(pattern => pattern.test(line.trim()))) {
+                console.log("debug footer detected", line);
                 footerDetected = true;
                 break;  // Stop processing once footer is found
             }
@@ -365,9 +457,91 @@ const messageProcessors = {
             }
         }
     
-        return this.convertPlainTextToMarkdown(processedLines.join('\n'));
+        return processedLines.join('\n');
     }
     ,
+
+    normalizeNewlines(text) {
+        return text
+            .replace(/\n\s*\n\s*\n+/g, '\n\n')  // 3 or more newlines to 2
+            .replace(/^\s*\n+/g, '')            // Remove newlines at start
+            .replace(/\n+\s*$/g, '')
+            .replace(/\\\./g, '.');           // Remove newlines at end
+    },
+
+    normalizeHtml(html) {
+        console.log("debug inside normalize html: ", html);
+        if (!html) return '';
+        
+        // Replace all variants of <br> tags with a single <br>
+        return html
+            .replace(/<br\s*\/?>\s*<br\s*\/?>/gi, '<br>') // Two consecutive <br> tags
+            .replace(/<br\s*[\/]?>/gi, '<br>')
+            .replace(/&lt;\s*<\s*/g, '<')
+            .replace(/\s*>\s*&gt;/g, '>')
+            .replace(/<title[^>]*>.*?<\/title>/gi, '')
+            .replace(/\\([^\w\s])/g, '\\$1');
+  
+  // Replace '&gt;' with '>' only if it is preceded by '>' with optional spaces in between
+    },
+
+    convertToSlackLinks(text) {
+        // Convert markdown links to Slack format
+        console.log("debug test convertToSlackLinks");
+        return text.replace(
+            /$$([^$$]+)\]$$([^)]+)$$/g, 
+            (match, text, url) => `<${url}|${text}>`
+        );
+    },
+
+    processHtmlToSlackMarkdown(html) {
+        try {
+            // First normalize HTML
+            const normalizedHtml = this.normalizeHtml(html);
+
+            
+            
+            // Convert to markdown (using your preferred HTML-to-markdown library)
+            /*
+            1. normalize thde html <br><br> -> <br>
+            2. convert htmlToMarkdown
+            3. convert markdown to slack format
+            */
+
+           
+            const markdown = this.htmlToMarkdown(normalizedHtml);
+            
+            console.log("debug markdown after process 2: ", markdown, [markdown]);
+            // Convert markdown links to Slack format
+            // const slackFormatted = textFormatters.formatSlackLinksAndEmails(markdown);
+            const finalText = this.normalizeNewlines(markdown);
+        
+            return finalText;
+        } catch (error) {
+            logger.error('Error processing HTML to Slack markdown:', error);
+            throw error;
+        }
+    },
+
+    //  convertMarkdownToSlackFormat(markdown) {
+    //     // Convert Markdown headers to Slack bold text
+    //     return markdown.replace(/^###\s*(.*)/gm, '*$1*');
+    //   },
+
+    processEmail(email) {
+        try {
+            // Try HTML to Markdown first
+            if (email.html) {
+                return convertHtmlToMarkdown(email.html);
+            }
+        } catch (error) {
+            logger.warn('HTML conversion failed, falling back to plain text', { error });
+        }
+    
+        // Fallback to plain text processing
+        return processPlainTextEmail(email.text);
+    },
+      
 
 
     processMessages(messages) {
@@ -411,8 +585,8 @@ const messageProcessors = {
         });
     
         return {
-            originalText,
-            quotedText
+            originalHTML: originalText,
+            quotedHTML : quotedText
         };
     },
 
@@ -493,7 +667,7 @@ const messageFormatters = {
     // },
 
     formatRootMessage2(email, sentiment) {
-        const messages = messageProcessors.extractEmailContent(email.text);
+        const messages = messageProcessors.extractEmailContent(email.html);
         const { originalText, quotedText } = messageProcessors.processMessages(messages);
 
         logger.debug('Formatting root message:', {
@@ -509,19 +683,24 @@ const messageFormatters = {
 
     formatRootMessage(email, sentiment) {
         const headerMessage = messageFormatters.constructHeaderMessage(email, sentiment);
-        const messages = messageProcessors.extractEmailContent(email.text);
-        const { originalText, quotedText } = messageProcessors.processMessages(messages);
+        
+        const messages = messageProcessors.extractEmailContent(email.html);
+        const { originalHTML, quotedHTML } = messageProcessors.processMessages(messages);
+        const originalText = messageProcessors.processHtmlToSlackMarkdown(originalHTML);
+        const quotedText = quotedHTML.map(qt => messageProcessors.processHtmlToSlackMarkdown(qt)); //messageProcessors.htmlToMarkdown(quotedHTML)
 
-        // console.log("debug original message : \n ", originalText);
+
+        console.log("debug original message : \n ", originalText);
  
  
-        let message = messageProcessors.combineOriginalAndQuotedText(originalText, quotedText);
-        const finalMessage = messageProcessors.cleanAndFormatFinalMessage(message);
-        const finalMessageWithHeader = `${headerMessage}\n${textFormatters.cleanMarkdownSpecialCharacters(finalMessage)}`;
+        // let message = messageProcessors.combineOriginalAndQuotedText(originalText, quotedText);
+        // const finalMessage = messageProcessors.cleanAndFormatFinalMessage(message);
+        // const finalMessageWithHeader = `${headerMessage}\n${textFormatters.cleanMarkdownSpecialCharacters(finalMessage)}`;
 
         // console.log("final message with Header :", finalMessageWithHeader);
         return {
-            finalMessageWithHeader,
+            // finalMessageWithHeader,
+            headerMessage,
             originalText,
             quotedText,
             headerMessage
