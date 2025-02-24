@@ -405,14 +405,74 @@ const messageProcessors = {
             }
         }
     
-        return this.convertPlainTextToMarkdown(processedLines.join('\n'));
+        return processedLines.join('\n');
     }
     ,
+
+    normalizeHtml(html) {
+        console.log("debug inside normalize html: ", html);
+        if (!html) return '';
+        
+        // Replace all variants of <br> tags with a single <br>
+        return html
+            .replace(/<br\s*\/?>\s*<br\s*\/?>/gi, '<br>') // Two consecutive <br> tags
+            .replace(/<br\s*[\/]?>/gi, '<br>');  // Normalize all <br> variants to <br>
+    },
+
+    convertToSlackLinks(text) {
+        // Convert markdown links to Slack format
+        return text.replace(
+            /$$([^$$]+)\]$$([^)]+)$$/g, 
+            (match, text, url) => `<${url}|${text}>`
+        );
+    },
+
+    processHtmlToSlackMarkdown(html) {
+        try {
+            // First normalize HTML
+            const normalizedHtml = this.normalizeHtml(html);
+
+            
+            
+            // Convert to markdown (using your preferred HTML-to-markdown library)
+            /*
+            1. normalize thde html <br><br> -> <br>
+            2. convert htmlToMarkdown
+            3. convert markdown to slack format
+            */
+
+           
+            const markdown = this.convertMarkdownToSlackFormat(this.htmlToMarkdown(normalizedHtml));
+            
+            console.log("debug markdown after process 2: ", markdown);
+            // Convert markdown links to Slack format
+            const slackFormatted = this.convertToSlackLinks(markdown);
+            
+            return slackFormatted;
+        } catch (error) {
+            logger.error('Error processing HTML to Slack markdown:', error);
+            throw error;
+        }
+    },
 
      convertMarkdownToSlackFormat(markdown) {
         // Convert Markdown headers to Slack bold text
         return markdown.replace(/^###\s*(.*)/gm, '*$1*');
       },
+
+    processEmail(email) {
+        try {
+            // Try HTML to Markdown first
+            if (email.html) {
+                return convertHtmlToMarkdown(email.html);
+            }
+        } catch (error) {
+            logger.warn('HTML conversion failed, falling back to plain text', { error });
+        }
+    
+        // Fallback to plain text processing
+        return processPlainTextEmail(email.text);
+    },
       
 
 
@@ -558,11 +618,11 @@ const messageFormatters = {
         
         const messages = messageProcessors.extractEmailContent(email.html);
         const { originalHTML, quotedHTML } = messageProcessors.processMessages(messages);
-        const originalText = messageProcessors.convertMarkdownToSlackFormat(messageProcessors.htmlToMarkdown(originalHTML))
-        const quotedText = quotedHTML.map(qt => messageProcessors.convertMarkdownToSlackFormat(messageProcessors.htmlToMarkdown(qt))); //messageProcessors.htmlToMarkdown(quotedHTML)
+        const originalText = messageProcessors.processHtmlToSlackMarkdown(originalHTML);
+        const quotedText = quotedHTML.map(qt => messageProcessors.processHtmlToSlackMarkdown(originalHTML)(qt)); //messageProcessors.htmlToMarkdown(quotedHTML)
 
 
-        // console.log("debug original message : \n ", originalText);
+        console.log("debug original message : \n ", originalText);
  
  
         // let message = messageProcessors.combineOriginalAndQuotedText(originalText, quotedText);
