@@ -87,7 +87,7 @@ const footerRegexPatterns = [
 
 
    // **Common Closing Phrases**
-   /(?:Regards|Best Regards|Kind Regards|Sincerely|Thanks(?:,|\s+&)? Regards?|Cheers|Best|Best Wishes|With Appreciation|Yours Sincerely|Yours Truly|Warm Regards|Thanks and Regards|Respectfully),?/i,
+   /^(?:Regards|Best Regards|Kind Regards|Sincerely|Thanks(?:,|\s+&)? Regards?|Cheers|Best|Best Wishes|With Appreciation|Yours Sincerely|Yours Truly|Warm Regards|Thanks and Regards|Respectfully),?/i,
 
 
    // **Mobile Email Signatures**
@@ -432,32 +432,40 @@ const messageProcessors = {
     
     
     handleOriginalPart(email) {
-            /*
+        /*
             0. iterate line by line,
-            1. it footer is encountered remove it.
+            1. if footer is encountered, split at that point and keep the content before it
+            2. ensure we're not returning empty content
         */
-
         const lines = email.split('\n');
-        const processedLines = [];
-        let footerDetected = false;
+        
+        // Find the first footer match
+        const footerIndex = lines.findIndex(line => 
+            footerRegexPatterns.some(pattern => pattern.test(line.trim()))
+        );
     
-        for (let line of lines) {
-            // Check for footer
-            console.log("debug line : ", line);
-
-            if (footerRegexPatterns.some(pattern => pattern.test(line.trim()))) {
-                console.log("debug footer detected", line);
-                footerDetected = true;
-                break;  // Stop processing once footer is found
+        console.log("debug email content:", [email]);
+        console.log("debug lines count:", lines.length);
+        console.log("debug footer index:", footerIndex);
+    
+        if (footerIndex === 0) {
+            // If footer is in first line, continue processing rest of the content
+            console.log("debug footer detected in first line, processing remaining content");
+            const remainingContent = lines.slice(1).join('\n').trim();
+            if (remainingContent) {
+                return remainingContent;
             }
-    
-            // If no footer detected yet, add the line
-            if (!footerDetected && line.trim()) {
-                processedLines.push(line);
+        } else if (footerIndex > 0) {
+            // Take all content up to the footer
+            console.log("debug footer detected at line:", footerIndex);
+            const contentBeforeFooter = lines.slice(0, footerIndex).join('\n').trim();
+            if (contentBeforeFooter) {
+                return contentBeforeFooter;
             }
         }
     
-        return processedLines.join('\n');
+        // If no valid footer found or no content before footer, return original content
+        return email;
     }
     ,
 
@@ -557,6 +565,7 @@ const messageProcessors = {
             
             // Check for reply header
             if (emailPatterns.isReplyHeader(normalizedContent)) {
+                console.log("debug reply header found");
                 const matchedText = [
                     emailPatterns.replyHeaders.standard,
                     emailPatterns.replyHeaders.complex
@@ -681,7 +690,7 @@ const messageFormatters = {
         };
     },
 
-    formatRootMessage(email, sentiment) {
+    formatRootMessage3(email, sentiment) {
         const headerMessage = messageFormatters.constructHeaderMessage(email, sentiment);
         
         const messages = messageProcessors.extractEmailContent(email.html);
@@ -705,7 +714,78 @@ const messageFormatters = {
             quotedText,
             headerMessage
         };
-    } 
+    } ,
+
+    formatRootMessage(email, sentiment) {
+        const headerMessage = messageFormatters.constructHeaderMessage(email, sentiment);
+        
+        try {
+            // First attempt: Try HTML processing if HTML content exists
+            if (email.html) {
+                try {
+                    const messages = messageProcessors.extractEmailContent(email.html);
+                    const { originalHTML, quotedHTML } = messageProcessors.processMessages(messages);
+                    const originalText = messageProcessors.processHtmlToSlackMarkdown(originalHTML);
+                    const quotedText = quotedHTML.map(qt => messageProcessors.processHtmlToSlackMarkdown(qt));
+    
+                    // Check if originalText is empty or only contains whitespace
+                    if (!originalText || originalText.trim() === '') {
+                        throw new Error('HTML processing resulted in empty content');
+                    }
+    
+                    let message = messageProcessors.combineOriginalAndQuotedText(originalText, quotedText);
+                    const finalMessage = messageProcessors.cleanAndFormatFinalMessage(message);
+                    const finalMessageWithHeader = `${headerMessage}\n${textFormatters.cleanMarkdownSpecialCharacters(finalMessage)}`;
+    
+                    return {
+                        finalMessageWithHeader,
+                        headerMessage,
+                        originalText,
+                        quotedText
+                    };
+                } catch (htmlError) {
+                    logger.warn('HTML processing failed or produced empty content, falling back to plain text', { error: htmlError });
+                    // Continue to fallback mechanism
+                }
+            }
+    
+            // Fallback: Process plain text
+            const messages = messageProcessors.extractEmailContent(email.text);
+            const { originalText, quotedText } = messageProcessors.processMessages(messages);
+            
+            // Check if plain text processing also resulted in empty content
+            if (!originalText || originalText.trim() === '') {
+                throw new Error('Plain text processing resulted in empty content');
+            }
+
+            const formattedOriginalMessage = messageProcessors.convertPlainTextToMarkdown(originalText);
+            const quotedTestFormatted = quotedText.map(qt => messageProcessors.convertPlainTextToMarkdown(qt));
+    
+            let message = messageProcessors.combineOriginalAndQuotedText(formattedOriginalMessage, quotedTestFormatted);
+            const finalMessage = messageProcessors.cleanAndFormatFinalMessage(message);
+            const finalMessageWithHeader = `${headerMessage}\n${textFormatters.cleanMarkdownSpecialCharacters(finalMessage)}`;
+    
+            return {
+                finalMessageWithHeader,
+                headerMessage,
+                originalText : formattedOriginalMessage,
+                quotedText : quotedTestFormatted
+            };
+    
+        } catch (error) {
+            logger.error('Error in formatRootMessage:', { error });
+            // Final fallback: Use raw email text if available, or indicate no content
+            const rawText = email.text || email.html || 'No content available';
+            return {
+                finalMessageWithHeader: `${headerMessage}\n${rawText}`,
+                headerMessage,
+                originalText: rawText,
+                quotedText: []
+            };
+        }
+    }
+
+    
     
 
 
